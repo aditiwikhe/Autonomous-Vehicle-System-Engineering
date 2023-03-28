@@ -31,6 +31,8 @@ class Detector:
 class Manager:
 	def __init__(self):
 		self.image_sub = rospy.Subscriber('/zed2/zed_node/stereo_raw/image_raw_color', Image, self.callback)
+		self.brake = rospy.Subscriber('/pacmod/as_rx/brake_cmd', PacmodCmd, queue_size = 1)
+		self.accelerate = rospy.Subscriber('/pacmod/as_rx/accel_cmd', PacmodCmd, queue_size = 1)
 		rospy.spin()
 
 	
@@ -39,7 +41,14 @@ class Manager:
 		self.detector = Detector()
 		person_exists = self.detector.detect(cvimage)
 		print(person_exists)
-		print(type(cvimage))
+
+		if not person_exists:
+			self.brake.publish(f64_cmd = 0.0)
+			self.accelerate.publish(f64_cmd = 0.2)
+		else:
+			self.accelerate.publish(f64_cmd = 0.0)
+			self.brake.publish(f64_cmd = 0.4)
+		
 	
 
 
