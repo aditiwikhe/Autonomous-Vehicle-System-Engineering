@@ -24,6 +24,6 @@ def detector(frame):
 while True:
 	cap = cv2.VideoCapture(0)
 	ret, frame = cap.read()
-	print(frame.size, type(frame))
+	#print(frame.size, type(frame))
 	if ret:
 		print(detector(frame))
