@@ -1,10 +1,9 @@
-
 import rospy
 from pacmod_msgs.msg import PacmodCmd
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 import cv2
-import imutils
+# import imutils
 import numpy as np
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
@@ -31,7 +30,10 @@ class Detector:
 class Manager:
 	def __init__(self):
 		self.image_sub = rospy.Subscriber('/zed2/zed_node/stereo_raw/image_raw_color', Image, self.callback)
+		self.bridge = CvBridge()
 		rospy.spin()
+
+
 
 	
 	def callback(self, image):
@@ -43,7 +45,7 @@ class Manager:
 	
 
 
-if _name_ == '_main_':
+if __name__ == '__main__':
 	rospy.init_node('sos_node', anonymous=True)
 	node = Manager()
 
@@ -55,4 +57,3 @@ if _name_ == '_main_':
 	
 # 	if ret:
 # 		print(c.detect(frame))
-
