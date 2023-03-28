@@ -33,6 +33,7 @@ class Manager:
 		self.image_sub = rospy.Subscriber('/zed2/zed_node/stereo_raw/image_raw_color', Image, self.callback)
 		self.brake = rospy.Subscriber('/pacmod/as_rx/brake_cmd', PacmodCmd, queue_size = 1)
 		self.accelerate = rospy.Subscriber('/pacmod/as_rx/accel_cmd', PacmodCmd, queue_size = 1)
+		self.enable_pub = rospy.Publisher('pacmod/as_rx/enable', Bool, queue_size = 1)
 		rospy.spin()
 
 	
