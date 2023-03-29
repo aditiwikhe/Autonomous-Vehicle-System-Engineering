@@ -3,10 +3,8 @@ from pacmod_msgs.msg import PacmodCmd
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 import cv2
-#import imutils
 import numpy as np
 from sensor_msgs.msg import Image
-#from sensor_msgs.msg import Bool
 from cv_bridge import CvBridge
 
 class Detector:
@@ -35,9 +33,6 @@ class Manager:
 		self.image_sub = rospy.Subscriber('/zed2/zed_node/stereo_raw/image_raw_color', Image, self.callback)
 		self.brake = rospy.Publisher('/pacmod/as_rx/brake_cmd', PacmodCmd, queue_size = 1)
 		self.accelerate = rospy.Publisher('/pacmod/as_rx/accel_cmd', PacmodCmd, queue_size = 1)
-		#self.enable_pub = rospy.Publisher('pacmod/as_rx/enable', Bool, queue_size = 1)
-		#self.enable_pub.publish(True)
-		#rospy.spin()
 
 	
 	def callback(self, image):
@@ -55,22 +50,13 @@ class Manager:
 		
 	def run(self):
 		while not self.person_exists:
-			print('Inside while')
 			self.brake.publish(f64_cmd = 0.0)
 			self.accelerate.publish(f64_cmd = 0.31)
+			
 		self.accelerate.publish(f64_cmd = 0.0)
 		self.brake.publish(f64_cmd = 0.4)
 
 if __name__ == '__main__':
-	rospy.init_node('sos_node', anonymous=True)
+	rospy.init_node('braking_node', anonymous=True)
 	node = Manager()
 	node.run()
-
-
-# c = Detector()
-# while True:
-# 	cap = cv2.VideoCapture(0)
-# 	ret, frame = cap.read()
-	
-# 	if ret:
-# 		print(c.detect(frame))
