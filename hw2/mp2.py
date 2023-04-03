@@ -4,7 +4,6 @@ from pacmod_msgs.msg import PacmodCmd
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 import cv2
-import imutils
 import numpy as np
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
@@ -30,38 +29,35 @@ class Detector:
 
 class Manager:
 	def __init__(self):
+		self.bridge = CvBridge()
+		self.person_exists = False
 		self.image_sub = rospy.Subscriber('/zed2/zed_node/stereo_raw/image_raw_color', Image, self.callback)
-		self.brake = rospy.Subscriber('/pacmod/as_rx/brake_cmd', PacmodCmd, queue_size = 1)
-		self.accelerate = rospy.Subscriber('/pacmod/as_rx/accel_cmd', PacmodCmd, queue_size = 1)
-		rospy.spin()
+		self.brake = rospy.Publisher('/pacmod/as_rx/brake_cmd', PacmodCmd, queue_size = 1)
+		self.accelerate = rospy.Publisher('/pacmod/as_rx/accel_cmd', PacmodCmd, queue_size = 1)
 
 	
 	def callback(self, image):
 		cvimage = self.bridge.imgmsg_to_cv2(image, "rgb8")
 		self.detector = Detector()
-		person_exists = self.detector.detect(cvimage)
-		print(person_exists)
+		self.person_exists = self.detector.detect(cvimage)
+		print(self.person_exists)
 
-		if not person_exists:
-			self.brake.publish(f64_cmd = 0.0)
-			self.accelerate.publish(f64_cmd = 0.2)
-		else:
-			self.accelerate.publish(f64_cmd = 0.0)
-			self.brake.publish(f64_cmd = 0.4)
+		# if not person_exists:
+		# 	self.brake.publish(f64_cmd = 0.0)
+		# 	self.accelerate.publish(f64_cmd = 0.31)
+		# else:
+		# 	self.accelerate.publish(f64_cmd = 0.0)
+		# 	self.brake.publish(f64_cmd = 0.4)
 		
-	
+	def run(self):
+		while not self.person_exists:
+			self.brake.publish(f64_cmd = 0.0)
+			self.accelerate.publish(f64_cmd = 0.31)
+			
+		self.accelerate.publish(f64_cmd = 0.0)
+		self.brake.publish(f64_cmd = 0.4)
 
-
-if _name_ == '_main_':
-	rospy.init_node('sos_node', anonymous=True)
+if __name__ == '__main__':
+	rospy.init_node('braking_node', anonymous=True)
 	node = Manager()
-
-
-# c = Detector()
-# while True:
-# 	cap = cv2.VideoCapture(0)
-# 	ret, frame = cap.read()
-	
-# 	if ret:
-# 		print(c.detect(frame))
-
+	node.run()
