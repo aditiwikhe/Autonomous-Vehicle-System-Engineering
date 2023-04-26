@@ -307,7 +307,11 @@ class PurePursuit(object):
             self.path_points_x = np.array(self.path_points_lon_x)
             self.path_points_y = np.array(self.path_points_lat_y)
 
+            f = open("8figure.csv",a)
             curr_x, curr_y, curr_yaw = self.get_gem_state()
+            f.write(f'{curr_x}, {curr_y}, {curr_yaw}')
+            f.close()
+
 
             # finding the distance of each way point from the current position
             for i in range(len(self.path_points_x)):
