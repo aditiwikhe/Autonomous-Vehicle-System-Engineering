@@ -219,7 +219,7 @@ class PurePursuit(object):
 
         # read recorded GPS lat, lon, heading
         dirname  = os.path.dirname(__file__)
-        filename = os.path.join(dirname, '8figure_final.csv')
+        filename = os.path.join(dirname, '8figure_slow.csv')
 
         with open(filename) as f:
             path_points = [tuple(line) for line in csv.reader(f)]
