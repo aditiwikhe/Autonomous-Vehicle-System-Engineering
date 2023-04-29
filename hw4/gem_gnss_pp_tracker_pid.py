@@ -219,7 +219,7 @@ class PurePursuit(object):
 
         # read recorded GPS lat, lon, heading
         dirname  = os.path.dirname(__file__)
-        filename = os.path.join(dirname, '../waypoints/xy_demo.csv')
+        filename = os.path.join(dirname, '8figure_final.csv')
 
         with open(filename) as f:
             path_points = [tuple(line) for line in csv.reader(f)]
@@ -227,7 +227,9 @@ class PurePursuit(object):
         # x towards East and y towards North
         self.path_points_lon_x   = [float(point[0]) for point in path_points] # longitude
         self.path_points_lat_y   = [float(point[1]) for point in path_points] # latitude
-        self.path_points_heading = [float(point[2]) for point in path_points] # heading
+        self.path_points_heading = [(np.degrees((float(point[2])))* (-1)) + 90 for point in path_points] # heading
+        self.path_points_heading = np.unwrap(self.path_points_heading)
+        np.savetxt("unwrap.csv", self.path_points_heading, delimiter=",")
         self.wp_size             = len(self.path_points_lon_x)
         self.dist_arr            = np.zeros(self.wp_size)
 
@@ -307,10 +309,11 @@ class PurePursuit(object):
             self.path_points_x = np.array(self.path_points_lon_x)
             self.path_points_y = np.array(self.path_points_lat_y)
 
-            f = open("8figure.csv",a)
+            
             curr_x, curr_y, curr_yaw = self.get_gem_state()
-            f.write(f'{curr_x}, {curr_y}, {curr_yaw}')
-            f.close()
+            # f = open("8figure_final.csv",'w')
+            # f.write(f'{curr_x}, {curr_y}, {curr_yaw}\n')
+            # f.close()
 
 
             # finding the distance of each way point from the current position
@@ -326,7 +329,7 @@ class PurePursuit(object):
                 v2 = [np.cos(curr_yaw), np.sin(curr_yaw)]
                 temp_angle = self.find_angle(v1,v2)
                 # find correct look-ahead point by using heading information
-                if abs(temp_angle) < np.pi/2:
+                if abs(temp_angle) < np.pi/6:
                     self.goal = idx
                     break
 
