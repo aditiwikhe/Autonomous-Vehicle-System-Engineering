@@ -34,6 +34,16 @@ from novatel_gps_msgs.msg import NovatelPosition, NovatelXYZ, Inspva
 from pacmod_msgs.msg import PositionWithSpeed, PacmodCmd
 
 
+from std_msgs.msg import Header
+from pacmod_msgs.msg import PacmodCmd, PositionWithSpeed, VehicleSpeedRpt
+from sensor_msgs.msg import PointCloud2
+import sensor_msgs.point_cloud2
+import pandas as pd
+import numpy as np
+import copy
+import time
+import matplotlib.pyplot as plt
+
 class PID(object):
 
     def __init__(self, kp, ki, kd, wg=None):
@@ -121,8 +131,10 @@ class PurePursuit(object):
         self.olon       = -88.2359994
 
         # read waypoints into the system 
+        self.pointcloud_data = PC_Manip()
+        self.env_points = self.pointcloud_data.get_env()
         self.goal       = 0            
-        self.read_waypoints() 
+        self.get_waypoints()
 
         self.desired_speed = 0.65  # m/s, reference speed
         self.max_accel     = 0.4 # % of acceleration
@@ -168,6 +180,7 @@ class PurePursuit(object):
         self.steer_cmd = PositionWithSpeed()
         self.steer_cmd.angular_position = 0.0 # radians, -: clockwise, +: counter-clockwise
         self.steer_cmd.angular_velocity_limit = 2.0 # radians/second
+        
 
 
     def inspva_callback(self, inspva_msg):
@@ -215,23 +228,42 @@ class PurePursuit(object):
 
         return steer_angle
 
-    def read_waypoints(self):
+    def reset_origin(self):
+        self.olat = self.lat
+        self.olon = self.lon
 
-        # read recorded GPS lat, lon, heading
-        dirname  = os.path.dirname(__file__)
-        filename = os.path.join(dirname, '8figure_slow.csv')
+    def track2midpoint(self, box1_loc, box2_loc, gem_startloc, num_points=4):
+        goal = ((box1_loc[0]+box2_loc[0])/2, (box1_loc[1]+box2_loc[1])/2) #midpoint of the two boxes
+        track_points_x = list(range(gem_startloc[0], goal[0], (goal[0]-gem_startloc[0])/num_points))
+        track_points_y = list(range(gem_startloc[1], goal[1], (goal[1]-gem_startloc[1])/num_points))
+        theta = math.atan(goal[0], goal[1])
+        track_points_heading = [theta+90 for i in range(len(track_points_x))]        
+        return track_points_x, track_points_y, track_points_heading
 
-        with open(filename) as f:
-            path_points = [tuple(line) for line in csv.reader(f)]
+    def circlepoints(self, circle_center, gem_startloc, num_points=20):
+        r = math.sqrt((gem_startloc[0]-circle_center[0])**2 + (gem_startloc[1]-circle_center[1])**2)
+        starting_t = math.acos(gem_startloc[0]/r)
+        angles = list(range(starting_t, starting_t+360, 360/num_points))
+        circle_points_x = []
+        circle_points_y = []
+        circle_points_heading = []
+        
+        for i in range(num_points):
+            circle_points_x.append(r*math.cos(np.radians(angles[i])))
+            circle_points_y.append(r*math.sin(np.radians(angles[i])))
+            circle_points_heading.append(angles[i]+90)
+        
+        return circle_points_x, circle_points_y, circle_points_heading
+        
+    def get_waypoints(self):
+        self.reset_origin()
+        curr_loc = self.get_gem_state()
+        self.path_points_lon_x, self.path_points_lat_y, self.path_points_heading = self.track2midpoint(self.env_points[0], self.env_points[1], (curr_loc[0], curr_loc[1]))
+        circle_points_x, circle_points_y, circle_points_heading = self.circlepoints(self.env_points[0], (self.path_points_lon_x[-1], self.path_points_lat_y[-1]))
+        self.path_points_lon_x.append(circle_points_x)
+        self.path_points_lat_y.append(circle_points_y)
+        self.path_points_heading.append(circle_points_heading)
 
-        # x towards East and y towards North
-        self.path_points_lon_x   = [float(point[0]) for point in path_points] # longitude
-        self.path_points_lat_y   = [float(point[1]) for point in path_points] # latitude
-        self.path_points_heading = [(np.degrees((float(point[2])))* (-1)) + 90 for point in path_points] # heading
-        self.path_points_heading = np.unwrap(self.path_points_heading)
-        np.savetxt("unwrap.csv", self.path_points_heading, delimiter=",")
-        self.wp_size             = len(self.path_points_lon_x)
-        self.dist_arr            = np.zeros(self.wp_size)
 
     def wps_to_local_xy(self, lon_wp, lat_wp):
         # convert GNSS waypoints into local fixed frame reprented in x and y
@@ -377,26 +409,111 @@ class PurePursuit(object):
             if output_accel < 0.3:
                 output_accel = 0.3
 
-            if (f_delta_deg <= 30 and f_delta_deg >= -30):
-                self.turn_cmd.ui16_cmd = 1
-            elif(f_delta_deg > 30):
-                self.turn_cmd.ui16_cmd = 2 # turn left
-            else:
-                self.turn_cmd.ui16_cmd = 0 # turn right
-
-
-
             self.accel_cmd.f64_cmd = output_accel
             self.steer_cmd.angular_position = np.radians(steering_angle)
             self.accel_pub.publish(self.accel_cmd)
             self.steer_pub.publish(self.steer_cmd)
-            self.turn_pub.publish(self.turn_cmd)
 
             self.rate.sleep()
 
+class PC_Manip:
+        def __init__(self):
+                self.lidar_sub = rospy.Subscriber('/lidar1/velodyne_points', PointCloud2, self.lidar_callback)
+                self.points = []
+                self.num_x_cells = 20
+                self.num_y_cells = 20
+                self.look_radius = 20
+                self.z_clip = 1.5
+                
+        def lidar_callback(self, pointcloud):
+                # print(ros_numpy.point_cloud2.get_xyz_points(pointcloud))
+                # self.xyz = ros_numpy.point_cloud2.get_xyz_points(pointcloud)
+                for point in sensor_msgs.point_cloud2.read_points(pointcloud, skip_nans=True):
+                        pt_x = point[0]
+                        pt_y = point[1]
+                        pt_z = point[2]
+                        self.points.append([pt_x, pt_y, pt_z])
+
+                        #print(len(self.points))
+
+                        # # self.xyz.append((pt_x, pt_y, pt_z))
+                        # f = open('xyz_lidar.csv', 'a')
+                        # f.write(f'{pt_x}, {pt_y}, {pt_z}\n')
+                        # f.close()
+                
+
+        def find_squares(self):
+                p = copy.deepcopy(self.points)
+                print('len',len(self.points))
+                # time.sleep(1)
+                #print(self.points)
+
+
+                df = pd.DataFrame(p)
+                print(df)
+                self.points = []
+                
+                df.columns = ('x','y','z')
+                print(df)
+
+                # clip z co-ordiantes
+                df = df[(df['z'] >= - self.z_clip) & (df['z'] <= self.z_clip)]
+                
+                # clip points based on look radius
+                df = df[(df['x'] <= self.look_radius) & ((df['x'] >= (-1) * self.look_radius)) \
+                        & (df['y'] <= self.look_radius) & (df['y'] >= (-1) * self.look_radius)]
+
+                        
+                num_grids = 20
+                        
+                # Calculate the grid size based on the number of desired grids
+                grid_size = np.ceil(np.max([df['x'].max(), df['y'].max()]) / num_grids)
+
+
+                # Create a grid by rounding off the x and y coordinates to the nearest multiple of grid_size
+                df['x_grid'] = np.floor(df['x'] / grid_size) * grid_size
+                df['y_grid'] = np.floor(df['y'] / grid_size) * grid_size
+
+                # Group the data by grid and count the number of points in each grid
+                counts = df.groupby(['x_grid', 'y_grid']).size().reset_index(name='count')
+
+                # Calculate the mean x and y coordinates for each grid
+                mean_coords = df.groupby(['x_grid', 'y_grid']).agg({'x': 'mean', 'y': 'mean'}).reset_index()
+
+                # Merge the count and mean coordinates dataframes
+                result = pd.merge(counts, mean_coords, on=['x_grid', 'y_grid'])
+
+                # Sort the data by the count of points in each grid in descending order
+                result = result.sort_values(by='count', ascending=False)
+                result = result.head(10)
+                
+                # return top 10 most dense grid (mean of x and y of all points in grid)
+                
+                fig, ax = plt.subplots(figsize=(7,7))
+
+
+                # Plot the original points
+                ax.scatter(df['x'], df['y'], s=2, alpha=0.5)
+
+                # Plot the mean x and y for each grid
+                ax.scatter(result['x'], result['y'], s=50, marker='x', color='red')
+
+                # Set the x and y axis labels
+                ax.set_xlabel('X Coordinates')
+                ax.set_ylabel('Y Coordinates')
+
+
+
+                # Show the plot
+                plt.show()
+                
+                return list(zip(result['x'], result['y']))
+
+        def get_env(self):
+                time.sleep(0.2)
+                return(self.find_squares())
 
 def pure_pursuit():
-
     rospy.init_node('gnss_pp_node', anonymous=True)
     pp = PurePursuit()
 
@@ -406,28 +523,10 @@ def pure_pursuit():
         pass
 
 
-def track2midpoint(box1_loc, box2_loc, gem_startloc, num_points=4):
-    goal = ((box1_loc[0]+box2_loc[0])/2, (box1_loc[1]+box2_loc[1])/2) #midpoint of the two boxes
-    track_points_x = list(range(gem_startloc[0], goal[0], (goal[0]-gem_startloc[0])/num_points))
-    track_points_y = list(range(gem_startloc[1], goal[1], (goal[1]-gem_startloc[1])/num_points))
-    return track_points_x, track_points_y
-
-def circlepoints(circle_center, gem_startloc, num_points=20):
-    
-    r = math.sqrt((gem_startloc[0]-circle_center[0])**2 + (gem_startloc[1]-circle_center[1])**2)
-    starting_t = math.acos(gem_startloc[0]/r)
-    angles = list(range(starting_t, starting_t+360, 360/num_points))
-    circle_points_x = []
-    circle_points_y = []
-    
-    for i in range(num_points):
-        circle_points_x.append(r*math.cos(angles[i]))
-        circle_points_y.append(r*math.sin(angles[i]))
-    
-    return circle_points_x, circle_points_y
 
 
-if __name__ == '__main__':
+
+if __name__ == '__main__':    
     pure_pursuit()
 
 
