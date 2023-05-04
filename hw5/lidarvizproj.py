@@ -1,79 +1,157 @@
-import numpy as np
+#!/usr/bin/env python3
+
+
+#==============================================================================
+# File name          : mp0.py                                                                 
+# Description        : MP0 for CS588                                                                                                                        
+# Usage              : rosrun mp0 mp0.py                                                                                                                           
+#==============================================================================
+
+#Python Headers
+import math
+import os
+import time
+
+
+# ROS Headers
+import rospy
+
+
+# GEM PACMod Headers
+from std_msgs.msg import Header
+from pacmod_msgs.msg import PacmodCmd, PositionWithSpeed, VehicleSpeedRpt
+from sensor_msgs.msg import PointCloud2
+import sensor_msgs.point_cloud2
 import pandas as pd
-import matplotlib.pyplot as plt
-from matplotlib import colors
-
-# load csv file containing x and y coordinates
-df = pd.read_csv('xyz_lidar.csv')
-df.columns = ('x','y','z')
-print(df)
-
-# set number of grid cells in x and y direction
-num_x_cells = 5
-num_y_cells = 5
-look_radius = 4
-
-# clip z co-ordiantes
-df = df[(df['z'] >= -1) & (df['z'] <= 1)]
-
-df = df[(df['x'] <= look_radius) & ((df['x'] >= (-1) * look_radius)) \
-        & (df['y'] <= look_radius) & (df['y'] >= (-1) * look_radius)]
-
-# determine grid cell size based on range of x and y coordinates
-x_range = df['x'].max() - df['x'].min()
-y_range = df['y'].max() - df['y'].min()
-print(x_range, y_range)
-cell_size_x = x_range / num_x_cells
-cell_size_y = y_range / num_y_cells
-print(cell_size_x, cell_size_y)
-# create grid
-x_coords = np.linspace(df['x'].min(), df['x'].max(), num=num_x_cells+1)
-y_coords = np.linspace(df['y'].min(), df['y'].max(), num=num_y_cells+1)
+import numpy as np
+import copy
+# import ros_numpy
 
 
-# count number of points in each grid cell
-counts = np.zeros((num_x_cells, num_y_cells))
-for i in range(num_x_cells):
-    for j in range(num_y_cells):
-        x_min = x_coords[i]
-        x_max = x_coords[i+1]
-        y_min = y_coords[j]
-        y_max = y_coords[j+1]
-        counts[i,j] = ((df['x'] >= x_min) & (df['x'] < x_max) & 
-                       (df['y'] >= y_min) & (df['y'] < y_max)).sum()
-
-print(counts.shape)
-
-x = np.repeat(np.arange(num_x_cells), num_x_cells)
-y = np.tile(np.arange(num_y_cells), num_y_cells)
-
-# create dataframe with x, y, and values as columns
-counts_df = pd.DataFrame({'x': x, 'y': y, 'values': counts.flatten()})
-counts_df = counts_df.sort_values(by='values', ascending=False)
-counts_df['real_x'] = ((counts_df['x'] - 1) * cell_size_x + counts_df['x'] * cell_size_x) / 2
-counts_df['real_y'] = ((counts_df['y'] - 1) * cell_size_y + counts_df['y'] * cell_size_y) / 2
-print(counts_df)
+# class Node():
 
 
-# plot coordinates and grid
-fig, ax = plt.subplots(figsize=(8,8))
-ax.scatter(df['x'], df['y'], s=2)
-for i in range(num_x_cells+1):
-    ax.axvline(x=x_coords[i], color='green', linewidth=0.5)
-for i in range(num_y_cells+1):
-    ax.axhline(y=y_coords[i], color='green', linewidth=0.5)
-plt.xlim(df['x'].min()-0.1*x_range, df['x'].max()+0.1*x_range)
-plt.ylim(df['y'].min()-0.1*y_range, df['y'].max()+0.1*y_range)
-plt.title('Grid Count')
-plt.xlabel('X')
-plt.ylabel('Y')
+#         def _init_(self):
+
+
+#                 self.rate = rospy.Rate(2)
+#                 self.rate_loop_over = rospy.Rate(5)
+#                 # pacmod_msgs/PacmodCmd || as_rx/turn_cmd
+#                 #Commands the turn signal subsystem to transition to a given state [enum].
+
+
+#                 self.turn_pub = rospy.Publisher('/pacmod/as_rx/turn_cmd', PacmodCmd, queue_size = 1)
+#                 self.sos_signal = [2,2,2,0,0,0,2,2,2]
+#                 #self.steer_pub = rospy.Publisher('/pacmod/as_rx/steer_cmd', PositionWithSpeed, queue_size = 1)
+#                 #self.steer_cmd = PositionWithSpeed()
+#                 #self.steer_cmd.angular_position = 0.75 # radians, -: clockwise, +: counter-clockwise
+#                 #self.steer_cmd.angular_velocity_limit = 2.0 # radians / second
+
+
+#         def run(self):
+#                 i = 0
+                
+#                 #rostopic pub -l /pacmod/as_rx/turn_cmd pacmod_msgs/PacmodCmd “{header: auto, ui16_cmd: 0}”
+#                 while not rospy.is_shutdown():
+#                         if i == 9:
+#                                 self.rate_loop_over.sleep()
+#                                 i = 0
+#                         self.turn_pub.publish(ui16_cmd = self.sos_signal[i])
+#                         i += 1
+#                         self.rate.sleep()
+
+class PC_Manip:
+        def __init__(self):
+                self.lidar_sub = rospy.Subscriber('/lidar1/velodyne_points', PointCloud2, self.lidar_callback)
+                self.points = []
+                self.num_x_cells = 20
+                self.num_y_cells = 20
+                self.look_radius = 20  
+                self.z_clip = 1.5     
+                
+        def lidar_callback(self, pointcloud):
+                # print(ros_numpy.point_cloud2.get_xyz_points(pointcloud))
+                # self.xyz = ros_numpy.point_cloud2.get_xyz_points(pointcloud)
+                for point in sensor_msgs.point_cloud2.read_points(pointcloud, skip_nans=True):
+                        pt_x = point[0]
+                        pt_y = point[1]
+                        pt_z = point[2]
+                        self.points.append([pt_x, pt_y, pt_z])
+
+                        #print(len(self.points))
+
+                        # # self.xyz.append((pt_x, pt_y, pt_z))
+                        # f = open('xyz_lidar.csv', 'a')
+                        # f.write(f'{pt_x}, {pt_y}, {pt_z}\n')
+                        # f.close()
+                
+
+        def find_squares(self):
+                p = copy.deepcopy(self.points)
+                print('len',len(self.points))
+                # time.sleep(1)
+                #print(self.points)
+
+
+                df = pd.DataFrame(p)
+                print(df)
+                self.points = []
+                
+                df.columns = ('x','y','z')
+                print(df)
+
+                # clip z co-ordiantes
+                df = df[(df['z'] >= - self.z_clip) & (df['z'] <= self.z_clip)]
+                
+                # clip points based on look radius
+                df = df[(df['x'] <= self.look_radius) & ((df['x'] >= (-1) * self.look_radius)) \
+                        & (df['y'] <= self.look_radius) & (df['y'] >= (-1) * self.look_radius)]
+
+                        
+                num_grids = 20
+                        
+                # Calculate the grid size based on the number of desired grids
+                grid_size = np.ceil(np.max([df['x'].max(), df['y'].max()]) / num_grids)
+
+
+                # Create a grid by rounding off the x and y coordinates to the nearest multiple of grid_size
+                df['x_grid'] = np.floor(df['x'] / grid_size) * grid_size
+                df['y_grid'] = np.floor(df['y'] / grid_size) * grid_size
+
+                # Group the data by grid and count the number of points in each grid
+                counts = df.groupby(['x_grid', 'y_grid']).size().reset_index(name='count')
+
+                # Calculate the mean x and y coordinates for each grid
+                mean_coords = df.groupby(['x_grid', 'y_grid']).agg({'x': 'mean', 'y': 'mean'}).reset_index()
+
+                # Merge the count and mean coordinates dataframes
+                result = pd.merge(counts, mean_coords, on=['x_grid', 'y_grid'])
+
+                # Sort the data by the count of points in each grid in descending order
+                result = result.sort_values(by='count', ascending=False)
+                result = result.head(10)
+                
+                # return top 10 most dense grid (mean of x and y of all points in grid)
+                return list(zip(result['x'], result['y']))
 
 
 
-# print counts for each grid cell
-for i in range(num_x_cells):
-    for j in range(num_y_cells):
-        ax.text(x_coords[i]+0.5*cell_size_x, y_coords[j]+0.5*cell_size_y, 
-                int(counts[i,j]), ha='center', va='center')
 
-plt.show()
+        def run(self):
+                print('here')
+                time.sleep(0.2)
+                #rostopic pub -l /pacmod/as_rx/turn_cmd pacmod_msgs/PacmodCmd “{header: auto, ui16_cmd: 0}”
+                print(self.find_squares())
+
+                while not rospy.is_shutdown():
+                        pass
+                        #time.sleep(0.1)
+                        
+                        
+
+
+if __name__ == '__main__':
+        rospy.init_node('sos_node', anonymous=True)
+        node = PC_Manip()
+        print('after init')
+        node.run()
