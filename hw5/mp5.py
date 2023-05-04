@@ -22,9 +22,7 @@ from std_msgs.msg import Header
 from pacmod_msgs.msg import PacmodCmd, PositionWithSpeed, VehicleSpeedRpt
 from sensor_msgs.msg import PointCloud2
 import sensor_msgs.point_cloud2
-import pandas as pd
-import numpy as np
-import copy
+import pandas
 # import ros_numpy
 
 
@@ -78,35 +76,22 @@ class PC_Manip:
                         pt_z = point[2]
                         self.points.append([pt_x, pt_y, pt_z])
 
-                        #print(len(self.points))
-
                         # # self.xyz.append((pt_x, pt_y, pt_z))
                         # f = open('xyz_lidar.csv', 'a')
                         # f.write(f'{pt_x}, {pt_y}, {pt_z}\n')
                         # f.close()
-                
 
-        def find_squares(self):
-                p = copy.deepcopy(self.points)
-                print('len',len(self.points))
-                # time.sleep(1)
-                #print(self.points)
+        def find_squares():
 
-
-                df = pd.DataFrame(p)
-                print(df)
-                self.points = []
-                
+                df = pd.DataFrame(self.points)
                 df.columns = ('x','y','z')
-                print(df)
 
                 # clip z co-ordiantes
                 df = df[(df['z'] >= - self.z_clip) & (df['z'] <= self.z_clip)]
                 
                 # clip points based on look radius
-                df = df[(df['x'] <= self.look_radius) & ((df['x'] >= (-1) * self.look_radius)) \
-                        & (df['y'] <= self.look_radius) & (df['y'] >= (-1) * self.look_radius)]
-
+                df = df[(df['x'] <= look_radius) & ((df['x'] >= (-1) * look_radius)) \
+                        & (df['y'] <= look_radius) & (df['y'] >= (-1) * look_radius)]
                         
                 num_grids = 20
                         
@@ -135,19 +120,14 @@ class PC_Manip:
                 return list(zip(result['x'], result['y']))
 
 
-
-
         def run(self):
+                i = 0
                 print('here')
-                time.sleep(0.2)
                 #rostopic pub -l /pacmod/as_rx/turn_cmd pacmod_msgs/PacmodCmd “{header: auto, ui16_cmd: 0}”
-                print(self.find_squares())
+                while i<1:
+                        time.sleep(1)
 
-                while not rospy.is_shutdown():
-                        pass
-                        #time.sleep(0.1)
-                        
-                        
+                        i+=1
 
 
 if __name__ == '__main__':
