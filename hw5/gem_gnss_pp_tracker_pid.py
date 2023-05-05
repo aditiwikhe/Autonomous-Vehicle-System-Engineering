@@ -232,43 +232,91 @@ class PurePursuit(object):
         self.olat = self.lat
         self.olon = self.lon
 
-    def track2midpoint(box1_loc, box2_loc, gem_startloc, num_points=4):
+    # def track2midpoint(box1_loc, box2_loc, gem_startloc, num_points=4):
+    #     goal = ((box1_loc[0]+box2_loc[0])/2, (box1_loc[1]+box2_loc[1])/2) #midpoint of the two boxes
+    #     print(gem_startloc[0])
+    #     print(goal)
+    #     print( int(goal[0]-gem_startloc[0])//num_points)
+    #     track_points_x = np.linspace(gem_startloc[0], goal[0], num_points)
+    #     track_points_y = np.linspace(gem_startloc[1], goal[1], num_points)
+    #     # track_points_x = np.linspace(gem_startloc[0], goal[0], (goal[0]-gem_startloc[0])/num_points)
+    #     # track_points_y = np.linspace(gem_startloc[1], goal[1], (goal[1]-gem_startloc[1])/num_points)
+    #     theta = math.atan(goal[0] / goal[1])
+    #     track_points_heading = [theta+90 for i in range(len(track_points_x))]        
+    #     return track_points_x, track_points_y, track_points_heading
+
+    # def circlepoints(circle_center, gem_startloc, num_points=20):
+    #     r = math.sqrt((gem_startloc[0]-circle_center[0])**2 + (gem_startloc[1]-circle_center[1])**2)
+    #     print((circle_center[0]/r))
+    #     print(np.degrees(math.acos(((gem_startloc[0]-circle_center[0])/r))))
+    #     starting_t = np.degrees(math.acos((gem_startloc[0] - circle_center[0])/r))
+    #     if gem_startloc[1] < circle_center[1]:
+    #         starting_t *= -1
+    #     angles = np.linspace(starting_t, starting_t+360, num_points)
+    #     circle_points_x = []
+    #     circle_points_y = []
+    #     circle_points_heading = []
+        
+    #     for i in range(num_points):
+    #         circle_points_x = np.append(circle_points_x, r*np.cos(np.radians(angles[i]))+circle_center[0])
+    #         circle_points_y = np.append(circle_points_y, r*np.sin(np.radians(angles[i]))+circle_center[1])
+    #         circle_points_heading = np.append(circle_points_heading, angles[i]+90)
+    
+    #     return circle_points_x, circle_points_y, circle_points_heading
+    
+    def track2midpoint(self, box1_loc, box2_loc, gem_startloc, num_points=4):
         goal = ((box1_loc[0]+box2_loc[0])/2, (box1_loc[1]+box2_loc[1])/2) #midpoint of the two boxes
-        print(gem_startloc[0])
-        print(goal)
-        print( int(goal[0]-gem_startloc[0])//num_points)
+
         track_points_x = np.linspace(gem_startloc[0], goal[0], num_points)
         track_points_y = np.linspace(gem_startloc[1], goal[1], num_points)
-        # track_points_x = np.linspace(gem_startloc[0], goal[0], (goal[0]-gem_startloc[0])/num_points)
-        # track_points_y = np.linspace(gem_startloc[1], goal[1], (goal[1]-gem_startloc[1])/num_points)
-        theta = math.atan(goal[0] / goal[1])
-        track_points_heading = [theta+90 for i in range(len(track_points_x))]        
+
+        theta = math.atan(((goal[1]-gem_startloc[1]) / (goal[0]-gem_startloc[0])))
+
+        track_points_heading = [np.degrees(theta)+90 for i in range(len(track_points_x))] #adding 90 so that positive x direction is 90deg (normally positive x direction would be 0deg)
+        if gem_startloc[0] > goal[0]:
+            track_points_heading = [x + 180 for x in track_points_heading] # accounting for wrapping that results in heading flip at 180deg
         return track_points_x, track_points_y, track_points_heading
 
-    def circlepoints(circle_center, gem_startloc, num_points=20):
-        r = math.sqrt((gem_startloc[0]-circle_center[0])**2 + (gem_startloc[1]-circle_center[1])**2)
-        print((circle_center[0]/r))
-        print(np.degrees(math.acos(((gem_startloc[0]-circle_center[0])/r))))
-        starting_t = np.degrees(math.acos((gem_startloc[0] - circle_center[0])/r))
-        if gem_startloc[1] < circle_center[1]:
-            starting_t *= -1
-        angles = np.linspace(starting_t, starting_t+360, num_points)
+    def circlepoints(self, circle_center, gem_startloc, perimeter_point, num_points=20):
+        r = math.sqrt((perimeter_point[0]-circle_center[0])**2 + (perimeter_point[1]-circle_center[1])**2)
+        starting_t = np.degrees(math.acos((perimeter_point[0] - circle_center[0])/r))
+        if perimeter_point[1] < circle_center[1]:
+            starting_t *= -1 # accounting for unwrapping that happens at 180deg (aka on the bottom half of a circle)
+        
+        # Assigning direction, Counterclockwise == 1, clockwise == 0
+        if gem_startloc[0] < circle_center[0]:
+            if perimeter_point[1] > circle_center[1]:
+                direction = 0
+            else:
+                direction = 1
+        else:
+            if perimeter_point[1] > circle_center[1]:
+                direction = 1
+            else:
+                direction = 0
+        
+        if direction:
+            angles = np.linspace(starting_t, starting_t+360, num_points)
+        else:
+            angles = np.linspace(starting_t, starting_t-360, num_points)
+        
         circle_points_x = []
         circle_points_y = []
         circle_points_heading = []
-        
         for i in range(num_points):
             circle_points_x = np.append(circle_points_x, r*np.cos(np.radians(angles[i]))+circle_center[0])
             circle_points_y = np.append(circle_points_y, r*np.sin(np.radians(angles[i]))+circle_center[1])
-            circle_points_heading = np.append(circle_points_heading, angles[i]+90)
-    
+
+            # +90 for forward x direction being 90, plus another 90 to calculated the tangent
+            circle_points_heading = np.append(circle_points_heading, angles[i]+(direction*180)) 
+        
         return circle_points_x, circle_points_y, circle_points_heading
         
     def get_waypoints(self):
         self.reset_origin()
         curr_loc = self.get_gem_state()
         self.path_points_lon_x, self.path_points_lat_y, self.path_points_heading = self.track2midpoint(self.env_points[0], self.env_points[1], (curr_loc[0], curr_loc[1]))
-        circle_points_x, circle_points_y, circle_points_heading = self.circlepoints(self.env_points[0], (self.path_points_lon_x[-1], self.path_points_lat_y[-1]))
+        circle_points_x, circle_points_y, circle_points_heading = self.circlepoints(self.env_points[0], (curr_loc[0], curr_loc[1]), (self.path_points_lon_x[-1], self.path_points_lat_y[-1]))
         self.path_points_lon_x = np.append(self.path_points_lon_x ,circle_points_x)
         self.path_points_lat_y = np.append(self.path_points_lat_y, circle_points_y)
         self.path_points_heading = np.append(self.path_points_heading, circle_points_heading)
