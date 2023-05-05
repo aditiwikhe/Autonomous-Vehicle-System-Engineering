@@ -232,7 +232,7 @@ class PurePursuit(object):
         self.olat = self.lat
         self.olon = self.lon
 
-    def track2midpoint(self, box1_loc, box2_loc, gem_startloc, num_points=4):
+    def track2midpoint(box1_loc, box2_loc, gem_startloc, num_points=4):
         goal = ((box1_loc[0]+box2_loc[0])/2, (box1_loc[1]+box2_loc[1])/2) #midpoint of the two boxes
         print(gem_startloc[0])
         print(goal)
@@ -245,20 +245,23 @@ class PurePursuit(object):
         track_points_heading = [theta+90 for i in range(len(track_points_x))]        
         return track_points_x, track_points_y, track_points_heading
 
-    def circlepoints(self, circle_center, gem_startloc, num_points=20):
+    def circlepoints(circle_center, gem_startloc, num_points=20):
         r = math.sqrt((gem_startloc[0]-circle_center[0])**2 + (gem_startloc[1]-circle_center[1])**2)
-        print(type(gem_startloc[0]/r))
-        starting_t = np.arccos(gem_startloc[0]/r)
+        print((circle_center[0]/r))
+        print(np.degrees(math.acos(((gem_startloc[0]-circle_center[0])/r))))
+        starting_t = np.degrees(math.acos((gem_startloc[0] - circle_center[0])/r))
+        if gem_startloc[1] < circle_center[1]:
+            starting_t *= -1
         angles = np.linspace(starting_t, starting_t+360, num_points)
         circle_points_x = []
         circle_points_y = []
         circle_points_heading = []
         
         for i in range(num_points):
-            circle_points_x = np.append(circle_points_x, r*np.cos(np.radians(angles[i])))
-            circle_points_y = np.append(circle_points_y, r*np.sin(np.radians(angles[i])))
+            circle_points_x = np.append(circle_points_x, r*np.cos(np.radians(angles[i]))+circle_center[0])
+            circle_points_y = np.append(circle_points_y, r*np.sin(np.radians(angles[i]))+circle_center[1])
             circle_points_heading = np.append(circle_points_heading, angles[i]+90)
-        
+    
         return circle_points_x, circle_points_y, circle_points_heading
         
     def get_waypoints(self):
