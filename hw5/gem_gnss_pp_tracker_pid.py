@@ -234,24 +234,30 @@ class PurePursuit(object):
 
     def track2midpoint(self, box1_loc, box2_loc, gem_startloc, num_points=4):
         goal = ((box1_loc[0]+box2_loc[0])/2, (box1_loc[1]+box2_loc[1])/2) #midpoint of the two boxes
-        track_points_x = list(range(gem_startloc[0], goal[0], (goal[0]-gem_startloc[0])/num_points))
-        track_points_y = list(range(gem_startloc[1], goal[1], (goal[1]-gem_startloc[1])/num_points))
-        theta = math.atan(goal[0], goal[1])
+        print(gem_startloc[0])
+        print(goal)
+        print( int(goal[0]-gem_startloc[0])//num_points)
+        track_points_x = np.linspace(gem_startloc[0], goal[0], num_points)
+        track_points_y = np.linspace(gem_startloc[1], goal[1], num_points)
+        # track_points_x = np.linspace(gem_startloc[0], goal[0], (goal[0]-gem_startloc[0])/num_points)
+        # track_points_y = np.linspace(gem_startloc[1], goal[1], (goal[1]-gem_startloc[1])/num_points)
+        theta = math.atan(goal[0] / goal[1])
         track_points_heading = [theta+90 for i in range(len(track_points_x))]        
         return track_points_x, track_points_y, track_points_heading
 
     def circlepoints(self, circle_center, gem_startloc, num_points=20):
         r = math.sqrt((gem_startloc[0]-circle_center[0])**2 + (gem_startloc[1]-circle_center[1])**2)
-        starting_t = math.acos(gem_startloc[0]/r)
-        angles = list(range(starting_t, starting_t+360, 360/num_points))
+        print(type(gem_startloc[0]/r))
+        starting_t = np.arccos(gem_startloc[0]/r)
+        angles = np.linspace(starting_t, starting_t+360, num_points)
         circle_points_x = []
         circle_points_y = []
         circle_points_heading = []
         
         for i in range(num_points):
-            circle_points_x.append(r*math.cos(np.radians(angles[i])))
-            circle_points_y.append(r*math.sin(np.radians(angles[i])))
-            circle_points_heading.append(angles[i]+90)
+            circle_points_x = np.append(circle_points_x, r*np.cos(np.radians(angles[i])))
+            circle_points_y = np.append(circle_points_y, r*np.sin(np.radians(angles[i])))
+            circle_points_heading = np.append(circle_points_heading, angles[i]+90)
         
         return circle_points_x, circle_points_y, circle_points_heading
         
@@ -260,9 +266,11 @@ class PurePursuit(object):
         curr_loc = self.get_gem_state()
         self.path_points_lon_x, self.path_points_lat_y, self.path_points_heading = self.track2midpoint(self.env_points[0], self.env_points[1], (curr_loc[0], curr_loc[1]))
         circle_points_x, circle_points_y, circle_points_heading = self.circlepoints(self.env_points[0], (self.path_points_lon_x[-1], self.path_points_lat_y[-1]))
-        self.path_points_lon_x.append(circle_points_x)
-        self.path_points_lat_y.append(circle_points_y)
-        self.path_points_heading.append(circle_points_heading)
+        self.path_points_lon_x = np.append(self.path_points_lon_x ,circle_points_x)
+        self.path_points_lat_y = np.append(self.path_points_lat_y, circle_points_y)
+        self.path_points_heading = np.append(self.path_points_heading, circle_points_heading)
+        self.wp_size             = len(self.path_points_lon_x)
+        self.dist_arr            = np.zeros(self.wp_size)
 
 
     def wps_to_local_xy(self, lon_wp, lat_wp):
@@ -422,8 +430,8 @@ class PC_Manip:
                 self.points = []
                 self.num_x_cells = 20
                 self.num_y_cells = 20
-                self.look_radius = 20
-                self.z_clip = 1.5
+                self.look_radius = 12
+                self.z_clip = 1
                 
         def lidar_callback(self, pointcloud):
                 # print(ros_numpy.point_cloud2.get_xyz_points(pointcloud))
@@ -458,10 +466,12 @@ class PC_Manip:
 
                 # clip z co-ordiantes
                 df = df[(df['z'] >= - self.z_clip) & (df['z'] <= self.z_clip)]
+
+                #df = df[(df['x'] >= 1) & (df['y'] >= 1) & (df['x'] <= -1) & (df['y'] <= -1)]
                 
                 # clip points based on look radius
                 df = df[(df['x'] <= self.look_radius) & ((df['x'] >= (-1) * self.look_radius)) \
-                        & (df['y'] <= self.look_radius) & (df['y'] >= (-1) * self.look_radius)]
+                        & (df['y'] <= self.look_radius) & (df['y'] >= (-1) * self.look_radius) & (df['y'] > 1)]
 
                         
                 num_grids = 20
@@ -505,7 +515,7 @@ class PC_Manip:
 
 
                 # Show the plot
-                plt.show()
+                #plt.show()
                 
                 return list(zip(result['x'], result['y']))
 
