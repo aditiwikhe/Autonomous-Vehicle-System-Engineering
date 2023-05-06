@@ -56,7 +56,7 @@ class Manager:
                         # f.close()
                         
         def process_points(self):
-            data = np.array(self.)
+            data = np.array(self.points)
             # Step 2: Define the four corner points of the rectangle
             corner_points = np.array([[1, -1.5], [10, -1.5], [10, 1.5], [1, 1.5]])
 
@@ -94,6 +94,7 @@ class Manager:
 		
 	def run(self):
 		start = time.time()
+		self.process_points()
 		while 1:
 		# while time.time() - start < 10:
 			if not self.cur_bb_size:
