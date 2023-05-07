@@ -9,23 +9,26 @@ import cv2
 import numpy as np
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
+from sensor_msgs.msg import PointCloud2
+import sensor_msgs.point_cloud2
+import matplotlib.pyplot as plt
 
 
 class Manager:
 	def __init__(self):
-        self.plot = True
+		self.plot = True
 		#self.bridge = CvBridge()
 		self.points = []
 		#self.person_exists = False
 		#self.height = 275
-        self.x_dist = 7
+		self.x_dist = 10
 		#self.width = None
 		self.target = self.x_dist # to be filled with a bounding box size
 		self.cur_bb_size = self.target # also bounding box size. This one will be updated
 		self.prev_bb_size = None
 		self.prev_err = 0
 		self.cum_err = 0
-		self.Kp = 0.0035
+		self.Kp = 0.04
 		self.Ki = 0
 		self.Kd = 0
 		self.cur_dir = 1 # Forward: 1, Reverse: 0
@@ -36,54 +39,64 @@ class Manager:
 		self.prev_update = 0
   
 		#self.image_sub = rospy.Subscriber('/zed2/zed_node/stereo_raw/image_raw_color', Image, self.callback)
-        self.lidar_sub = rospy.Subscriber('/lidar1/velodyne_points', PointCloud2, self.lidar_callback)
+		self.lidar_sub = rospy.Subscriber('/lidar1/velodyne_points', PointCloud2, self.lidar_callback)
 		self.brake = rospy.Publisher('/pacmod/as_rx/brake_cmd', PacmodCmd, queue_size = 1)
 		self.accelerate = rospy.Publisher('/pacmod/as_rx/accel_cmd', PacmodCmd, queue_size = 1)
 		self.shift = rospy.Publisher('/pacmod/as_rx/shift_cmd', PacmodCmd, queue_size = 1)
 		
-        def lidar_callback(self, pointcloud):
-                # print(ros_numpy.point_cloud2.get_xyz_points(pointcloud))
-                # self.xyz = ros_numpy.point_cloud2.get_xyz_points(pointcloud)
-                for point in sensor_msgs.point_cloud2.read_points(pointcloud, skip_nans=True):
-                        pt_x = point[0]
-                        pt_y = point[1]
-                        pt_z = point[2]
-                        self.points.append([pt_x, pt_y, pt_z])
+	def lidar_callback(self, pointcloud):
+			# print(ros_numpy.point_cloud2.get_xyz_points(pointcloud))
+			# self.xyz = ros_numpy.point_cloud2.get_xyz_points(pointcloud)
+			for point in sensor_msgs.point_cloud2.read_points(pointcloud, skip_nans=True):
+					pt_x = point[0]
+					pt_y = point[1]
+					pt_z = point[2]
+					self.points.append([pt_x, pt_y, pt_z])
 
-                        # # self.xyz.append((pt_x, pt_y, pt_z))
-                        # f = open('xyz_lidar.csv', 'a')
-                        # f.write(f'{pt_x}, {pt_y}, {pt_z}\n')
-                        # f.close()
-                        
-        def process_points(self):
-            data = np.array(self.points)
-            # Step 2: Define the four corner points of the rectangle
-            corner_points = np.array([[1, -1.5], [10, -1.5], [10, 1.5], [1, 1.5]])
+					# # self.xyz.append((pt_x, pt_y, pt_z))
+					# f = open('xyz_lidar.csv', 'a')
+					# f.write(f'{pt_x}, {pt_y}, {pt_z}\n')
+					# f.close()
+						
+	def process_points(self):
+		time.sleep(0.2)
+		data = np.array(self.points)
 
-            # Step 3: Filter the points that lie within the rectangle using NumPy boolean indexing
-            mask = np.logical_and.reduce((
-                data[:, 0] >= corner_points[0, 0],
-                data[:, 0] <= corner_points[1, 0],
-                data[:, 1] >= corner_points[0, 1],
-                data[:, 1] <= corner_points[2, 1]
-            ))
-            r_points = data[mask]
+		print(data.shape)
+		mask1 = np.logical_and.reduce((
+			data[:, 2] >= -1.5,
+			data[:, 2] <= 1.5,
+			
+		))
+		data = data[mask1]
+		# Step 2: Define the four corner points of the rectangle
+		corner_points = np.array([[1, -3.5], [20, -3.5], [20, 1.5], [1, 1.5]])
 
-            print(r_points.shape)
-            mean_x, mean_y = r_points[:, 0].mean(), r_points[:, 1].mean()
-            print(mean_x, mean_y)
-            
-            # Step 4: Plot the points and the rectangle using Matplotlib
-            if self.plot == True:
-                fig, ax = plt.subplots()
-                ax.scatter(data[:, 0], data[:, 1],s = 0.1,label = "All points")
-                ax.scatter(r_points[:, 0], r_points[:, 1], s = 0.1,label = "Points inside rectangle")
-                ax.plot(corner_points[:, 0], corner_points[:, 1], "--", c='r', label = "Rectangle")
-                plt.show()
-                ax.legend()
-                self.plot = False
-            
-            self.cur_bb_size = self.mean_x
+		# Step 3: Filter the points that lie within the rectangle using NumPy boolean indexing
+		mask = np.logical_and.reduce((
+			data[:, 0] >= corner_points[0, 0],
+			data[:, 0] <= corner_points[1, 0],
+			data[:, 1] >= corner_points[0, 1],
+			data[:, 1] <= corner_points[2, 1]
+		))
+		r_points = data[mask]
+
+		print(r_points.shape)
+		mean_x, mean_y = r_points[:, 0].mean(), r_points[:, 1].mean()
+		# print(mean_x, mean_y)
+		
+		# Step 4: Plot the points and the rectangle using Matplotlib
+		if self.plot == True:
+			fig, ax = plt.subplots()
+			ax.scatter(data[:, 0], data[:, 1],s = 0.1,label = "All points")
+			ax.scatter(r_points[:, 0], r_points[:, 1], s = 0.1,label = "Points inside rectangle")
+			ax.plot(corner_points[:, 0], corner_points[:, 1], "--", c='r', label = "Rectangle")
+			plt.show()
+			ax.legend()
+			self.plot = False
+		print(mean_x)
+		self.cur_bb_size = mean_x
+		return mean_x
 
 		# if not person_exists:
 		# 	self.brake.publish(f64_cmd = 0.0)
@@ -94,13 +107,15 @@ class Manager:
 		
 	def run(self):
 		start = time.time()
-		self.process_points()
+		
 		while 1:
+			time.sleep(0.01)
+			print(self.process_points())
 		# while time.time() - start < 10:
 			if not self.cur_bb_size:
 				self.cur_bb_size = self.prev_bb_size
 			err = self.target - self.cur_bb_size
-			print(self.cur_bb_size)
+			print('current_dist : ',self.cur_bb_size)
 			if self.cur_bb_size:
 				self.height_array.append(self.cur_bb_size)
 			print(f'error: {err}')
@@ -108,16 +123,21 @@ class Manager:
 				self.err_array.append(err)
 			update = self.Kp*err + self.Ki*self.cum_err + self.Kd*(err - self.prev_err)
 			direction = update >= 0
+			
+			
 			update = abs(update)
+			update = update + 0.3
+			print('update val', update)
 			print(direction)
 
 			if direction == True:
-				self.shift.publish(ui16_cmd = 3)
-			else:
 				self.shift.publish(ui16_cmd = 1)
 
-			if update > 0.5:
-				update = 0.5
+			else:
+				self.shift.publish(ui16_cmd = 3)
+
+			if update > 0.7:
+				update = 0.7
 
 			if update < self.prev_update:
 				self.accelerate.publish(f64_cmd = 0)
@@ -133,6 +153,12 @@ class Manager:
 			self.cum_err += err
 			if self.cur_bb_size:
 				self.prev_bb_size = self.cur_bb_size
+
+			#f = open('mp3read1.csv','a')
+			#f.write(f"{self.cur_bb_size},{err},{update}, {self.Kp},{self.target}\n")
+			#f.close()
+			self.points = []
+
 
 		print(f'{max(self.height_array)} {min(self.height_array)}')
 		print(f'{max(self.err_array)} {min(self.err_array)}')
