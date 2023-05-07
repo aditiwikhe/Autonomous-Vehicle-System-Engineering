@@ -84,7 +84,7 @@ class Manager:
 		print(r_points.shape)
 		mean_x, mean_y = r_points[:, 0].mean(), r_points[:, 1].mean()
 		# print(mean_x, mean_y)
-		
+		print(mean_x)
 		# Step 4: Plot the points and the rectangle using Matplotlib
 		if self.plot == True:
 			fig, ax = plt.subplots()
@@ -94,7 +94,7 @@ class Manager:
 			plt.show()
 			ax.legend()
 			self.plot = False
-		print(mean_x)
+		
 		self.cur_bb_size = mean_x
 		return mean_x
 
@@ -138,6 +138,11 @@ class Manager:
 
 			if update > 0.7:
 				update = 0.7
+
+			if abs(err) <= 0.2:
+				self.brake.publish(f64_cmd = 0.5)
+				#self.accelerate.publish(f64_cmd = 0)
+				update = 0
 
 			if update < self.prev_update:
 				self.accelerate.publish(f64_cmd = 0)
