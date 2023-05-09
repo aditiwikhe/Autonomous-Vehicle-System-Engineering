@@ -24,9 +24,9 @@ class Manager:
 		self.x_dist = 10
 		#self.width = None
 		self.target = self.x_dist # to be filled with a bounding box size
-		self.cur_bb_size = self.target # also bounding box size. This one will be updated
-		self.prev_bb_size = None
-		self.prev_err = 0
+		self.cur_dist = self.target # also bounding box size. This one will be updated
+		self.prev_dist = None
+		self.prev_err = None
 		self.cum_err = 0
 		self.Kp = 0.17
 		self.Ki = 0.001
@@ -98,7 +98,7 @@ class Manager:
 			ax.legend()
 			self.plot = False
 		
-		self.cur_bb_size = mean_x
+		self.cur_dist = mean_x
 		return mean_x
 
 		# if not person_exists:
@@ -107,31 +107,35 @@ class Manager:
 		# else:
 		# 	self.accelerate.publish(f64_cmd = 0.0)
 		# 	self.brake.publish(f64_cmd = 0.4)
-		
+	
+	
+ 	
 	def run(self):
 		start = time.time()
-		
 		while 1:
 			#time.sleep(0.01)
 			print(self.process_points())
 		# while time.time() - start < 10:
-			if not self.cur_bb_size:
-				self.cur_bb_size = self.prev_bb_size
-			err = self.target - self.cur_bb_size
-			print('current_dist : ',self.cur_bb_size)
-			if self.cur_bb_size:
-				self.height_array.append(self.cur_bb_size)
+			if not self.cur_dist:
+				self.cur_dist = self.prev_dist
+			err = self.target - self.cur_dist
+			print('current_dist : ',self.cur_dist)
+			if self.cur_dist:
+				self.height_array.append(self.cur_dist)
 			print(f'error: {err}')
 			if err:
 				self.err_array.append(err)
-			update = self.Kp*err + self.Ki*self.cum_err + self.Kd*(err - self.prev_err)
-			direction = err >= 0
-
-
+			curr_time = rospy.get_time()
 			
+			if self.prev_err and self.prev_time:
+				de = (err - self.prev_err)/(curr_time - self.prev_time)
+			else:
+				de = 0
+
+			update = self.Kp*err + self.Ki*self.cum_err + self.Kd*de
+			direction = err >= 0
 			
 			update = abs(update)
-			update = update
 			
 			print(direction)
 
@@ -159,7 +163,7 @@ class Manager:
 				print('Brake:',self.braking_gain*(self.prev_update - update))
 			else:
 				self.brake.publish(f64_cmd = 0)
-				self.accelerate.publish(f64_cmd = abs(update))
+				self.accelerate.publish(f64_cmd = update)
 
 			#print(f'update: {update}')
 			if update:
@@ -167,11 +171,11 @@ class Manager:
 
 			self.prev_err = err
 			self.cum_err += err
-			if self.cur_bb_size:
-				self.prev_bb_size = self.cur_bb_size
-
+			if self.cur_dist:
+				self.prev_dist = self.cur_dist
+			self.prev_time = curr_time
 			#f = open('mp3read1.csv','a')
-			#f.write(f"{self.cur_bb_size},{err},{update}, {self.Kp},{self.target}\n")
+			#f.write(f"{self.cur_dist},{err},{update}, {self.Kp},{self.target}\n")
 			#f.close()
 			self.points = []
 			self.prev_update = update
