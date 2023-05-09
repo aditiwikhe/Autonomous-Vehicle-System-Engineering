@@ -28,15 +28,17 @@ class Manager:
 		self.prev_bb_size = None
 		self.prev_err = 0
 		self.cum_err = 0
-		self.Kp = 0.04
-		self.Ki = 0
+		self.Kp = 0.17
+		self.Ki = 0.001
 		self.Kd = 0
+		self.braking_gain = 2.5
 		self.cur_dir = 1 # Forward: 1, Reverse: 0
 
 		self.height_array = []
 		self.err_array = []
 		self.update_array = []
 		self.prev_update = 0
+		self.prev_direction = False
   
 		#self.image_sub = rospy.Subscriber('/zed2/zed_node/stereo_raw/image_raw_color', Image, self.callback)
 		self.lidar_sub = rospy.Subscriber('/lidar1/velodyne_points', PointCloud2, self.lidar_callback)
@@ -59,18 +61,18 @@ class Manager:
 					# f.close()
 						
 	def process_points(self):
-		time.sleep(0.2)
+		time.sleep(0.15)
 		data = np.array(self.points)
 
 		print(data.shape)
 		mask1 = np.logical_and.reduce((
-			data[:, 2] >= -1.5,
-			data[:, 2] <= 1.5,
+			data[:, 2] >= -1,
+			data[:, 2] <= 1,
 			
 		))
 		data = data[mask1]
 		# Step 2: Define the four corner points of the rectangle
-		corner_points = np.array([[1, -3.5], [20, -3.5], [20, 1.5], [1, 1.5]])
+		corner_points = np.array([[1, -5.5], [20, -5.5], [20, -1], [1, -1]])
 
 		# Step 3: Filter the points that lie within the rectangle using NumPy boolean indexing
 		mask = np.logical_and.reduce((
@@ -85,6 +87,7 @@ class Manager:
 		mean_x, mean_y = r_points[:, 0].mean(), r_points[:, 1].mean()
 		# print(mean_x, mean_y)
 		print(mean_x)
+		self.x_dist = mean_x
 		# Step 4: Plot the points and the rectangle using Matplotlib
 		if self.plot == True:
 			fig, ax = plt.subplots()
@@ -109,7 +112,7 @@ class Manager:
 		start = time.time()
 		
 		while 1:
-			time.sleep(0.01)
+			#time.sleep(0.01)
 			print(self.process_points())
 		# while time.time() - start < 10:
 			if not self.cur_bb_size:
@@ -122,35 +125,43 @@ class Manager:
 			if err:
 				self.err_array.append(err)
 			update = self.Kp*err + self.Ki*self.cum_err + self.Kd*(err - self.prev_err)
-			direction = update >= 0
+			direction = err >= 0
+
+
 			
 			
 			update = abs(update)
-			update = update + 0.3
-			print('update val', update)
+			update = update
+			
 			print(direction)
 
-			if direction == True:
+			if direction == True and self.prev_direction == False:
+				self.accelerate.publish(f64_cmd = 0)
+				self.brake.publish(f64_cmd = 1)
+				# test out braking 0.8 - 1
+				time.sleep(1)
 				self.shift.publish(ui16_cmd = 1)
 
-			else:
+			elif direction == False and self.prev_direction == True:
+				self.accelerate.publish(f64_cmd = 0)
+				self.brake.publish(f64_cmd = 1)
+				time.sleep(1)
 				self.shift.publish(ui16_cmd = 3)
 
-			if update > 0.7:
-				update = 0.7
 
-			if abs(err) <= 0.2:
-				self.brake.publish(f64_cmd = 0.5)
-				#self.accelerate.publish(f64_cmd = 0)
-				update = 0
+			if update > 0.4:
+				update = 0.4
+			print('update val', update, '--',self.prev_update)
 
 			if update < self.prev_update:
 				self.accelerate.publish(f64_cmd = 0)
-				self.brake.publish(f64_cm = self.prev_update - update)
+				self.brake.publish(f64_cmd = self.braking_gain*(self.prev_update - update))
+				print('Brake:',self.braking_gain*(self.prev_update - update))
 			else:
+				self.brake.publish(f64_cmd = 0)
 				self.accelerate.publish(f64_cmd = abs(update))
 
-			print(f'update: {update}')
+			#print(f'update: {update}')
 			if update:
 				self.update_array.append(update)
 
@@ -163,7 +174,8 @@ class Manager:
 			#f.write(f"{self.cur_bb_size},{err},{update}, {self.Kp},{self.target}\n")
 			#f.close()
 			self.points = []
-
+			self.prev_update = update
+			self.prev_direction = direction
 
 		print(f'{max(self.height_array)} {min(self.height_array)}')
 		print(f'{max(self.err_array)} {min(self.err_array)}')
