@@ -276,8 +276,16 @@ class PurePursuit(object):
         theta = math.atan(((goal[1]-gem_startloc[1]) / (goal[0]-gem_startloc[0])))
 
         track_points_heading = [180-(np.degrees(theta)+90) for i in range(len(track_points_x))] #adding 90 so that positive x direction is 90deg (normally positive x direction would be 0deg)
+        
         if gem_startloc[0] > goal[0]:
             track_points_heading = [x + 180 for x in track_points_heading] # accounting for wrapping that results in heading flip at 180deg
+        self.radius = (math.sqrt((goal[0]-box1_loc[0])**2 + (goal[1]-box1_loc[1])**2))
+        
+        # idea: might want to give the last waypoint a header that is perpendicular to the line betweent the boxes
+        # This way it would ensure that our circle is centered around the box. In practice may not be necessary
+        # Struggled with implementing it for a few hours and gave up. May return
+        # A_dist = abs(box2_loc[0] - box1_loc[0])        
+        # boxes_theta = np.degrees(math.acos((box2_loc[0] - box1_loc[0])/self.radius)) 
         return track_points_x, track_points_y, track_points_heading
 
     def circlepoints(self, circle_center, gem_startloc, perimeter_point, num_points=20):
@@ -431,8 +439,26 @@ class PurePursuit(object):
             else:
                 print('midpoint reached')
                 self.midpoint_reached = True
+                midpoint_time  = rospy.get_time()
+                
+                # calculates constant steering angle for circle around box
+                # basis is this website: https://calculator.academy/turning-radius-calculator/
+                # equation given is turn_radius = wheel_base / tan(frontwheel_angle)
+                frontwheel_angle = np.degrees(np.arctan2((self.radius / self.wheelbase)))
+                circlular_steering_angle = self.front2steer(frontwheel_angle)
 
                 while 1:
+                    
+                    curr_x, curr_y, curr_yaw = self.get_gem_state()
+                    dist2goal = math.sqrt((curr_x - self.path_points_lon_x[-1])**2 + (curr_y - self.path_points_lat_y[-1])**2)
+                    print('dist2goal: ', dist2goal)
+                    curr_time = rospy.get_time()
+                    # check for breaking condition (within 1.5m of midpoint, midpoint has been reached once and was reached more than 10 seconds ago)
+                    if dist2goal < 1.5 and self.midpoint_reached and (curr_time > midpoint_time+10):
+                        while 1:
+                            self.brake_pub.publish(f64_cmd = 0.6)
+
+                    # provide inputs to pid velocity control
                     current_time = rospy.get_time()
                     filt_vel     = self.speed_filter.get_data(self.speed)
                     output_accel = self.pid_speed.get_control(current_time, self.desired_speed - filt_vel)
@@ -442,21 +468,23 @@ class PurePursuit(object):
                     if output_accel < 0.3:
                         output_accel = 0.3
 
+
                     self.accel_cmd.f64_cmd = output_accel
                     self.accel_pub.publish(self.accel_cmd)
 
                     #self.steer_cmd.angular_position = 0.0 # radians, -: clockwise, +: counter-clockwise
                     self.steer_cmd.angular_velocity_limit = 2.0 # radians/second
-                    self.steer_cmd.angular_position = np.radians(3.5 * 135)
+                    # self.steer_cmd.angular_position = np.radians(3.5 * 135)
+                    self.steer_cmd.angular_position = np.radians(circlular_steering_angle)
                     self.steer_pub.publish(self.steer_cmd)
 
 
 
-                self.path_points_x = np.array(self.circle_points_x)
-                self.path_points_y = np.array(self.circle_points_y)
-                self.path_points_heading = self.circle_points_heading
-                self.wp_size             = len(self.circle_points_x)
-                self.dist_arr            = np.zeros(self.wp_size)
+                # self.path_points_x = np.array(self.circle_points_x)
+                # self.path_points_y = np.array(self.circle_points_y)
+                # self.path_points_heading = self.circle_points_heading
+                # self.wp_size             = len(self.circle_points_x)
+                # self.dist_arr            = np.zeros(self.wp_size)
 
 
             # finding the distance of each way point from the current position
