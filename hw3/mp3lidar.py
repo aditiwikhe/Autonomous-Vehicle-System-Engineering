@@ -84,7 +84,7 @@ class Manager:
 		r_points = data[mask]
 
 		print(r_points.shape)
-		mean_x, mean_y = r_points[:, 0].mean(), r_points[:, 1].mean()
+		mean_x = r_points[:, 0].mean()
 		# print(mean_x, mean_y)
 		print(mean_x)
 		self.x_dist = mean_x
