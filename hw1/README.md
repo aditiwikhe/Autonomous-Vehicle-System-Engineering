@@ -1,0 +1,1 @@
+Under control of the computer, cause the vehicle to flash the SOS pattern on its turn indicator lights. SOS in morse code is dot-dot-dot-dash-dash-dash-dot-dot-dot. Map dot to the left turn indicator and dash to the right, and make the vehicle flash: left-left-left-right-right-right-left-left-left followed by a wait, then repeat. 
