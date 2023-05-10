@@ -29,8 +29,8 @@ class Manager:
 		self.prev_err = None
 		self.cum_err = 0
 		self.Kp = 0.17
-		self.Ki = 0.001
-		self.Kd = 0
+		self.Ki = 0.002
+		self.Kd = 0.001
 		self.braking_gain = 2.5
 		self.cur_dir = 1 # Forward: 1, Reverse: 0
 
@@ -141,14 +141,14 @@ class Manager:
 
 			if direction == True and self.prev_direction == False:
 				self.accelerate.publish(f64_cmd = 0)
-				self.brake.publish(f64_cmd = 1)
+				self.brake.publish(f64_cmd = 0.8)
 				# test out braking 0.8 - 1
 				time.sleep(1)
 				self.shift.publish(ui16_cmd = 1)
 
 			elif direction == False and self.prev_direction == True:
 				self.accelerate.publish(f64_cmd = 0)
-				self.brake.publish(f64_cmd = 1)
+				self.brake.publish(f64_cmd = 0.8)
 				time.sleep(1)
 				self.shift.publish(ui16_cmd = 3)
 
