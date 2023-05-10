@@ -21,6 +21,7 @@ import math
 import numpy as np
 from numpy import linalg as la
 import scipy.signal as signal
+from sklearn.cluster import KMeans
 
 # ROS Headers
 import alvinxy as axy # Import AlvinXY transformation module
@@ -136,7 +137,9 @@ class PurePursuit(object):
         self.goal       = 0            
         self.get_waypoints()
 
-        self.desired_speed = 0.65  # m/s, reference speed
+        self.midpoint_reached = False
+
+        self.desired_speed = 0.55  # m/s, reference speed
         self.max_accel     = 0.4 # % of acceleration
         self.pid_speed     = PID(1.2, 0.2, 0.6, wg=20)
         self.speed_filter  = OnlineFilter(1.2, 30, 4)
@@ -272,7 +275,7 @@ class PurePursuit(object):
 
         theta = math.atan(((goal[1]-gem_startloc[1]) / (goal[0]-gem_startloc[0])))
 
-        track_points_heading = [np.degrees(theta)+90 for i in range(len(track_points_x))] #adding 90 so that positive x direction is 90deg (normally positive x direction would be 0deg)
+        track_points_heading = [180-(np.degrees(theta)+90) for i in range(len(track_points_x))] #adding 90 so that positive x direction is 90deg (normally positive x direction would be 0deg)
         if gem_startloc[0] > goal[0]:
             track_points_heading = [x + 180 for x in track_points_heading] # accounting for wrapping that results in heading flip at 180deg
         return track_points_x, track_points_y, track_points_heading
@@ -308,21 +311,35 @@ class PurePursuit(object):
             circle_points_y = np.append(circle_points_y, r*np.sin(np.radians(angles[i]))+circle_center[1])
 
             # +90 for forward x direction being 90, plus another 90 to calculated the tangent
-            circle_points_heading = np.append(circle_points_heading, angles[i]+(direction*180)) 
+            circle_points_heading = np.append(circle_points_heading, (angles[i]+(direction*180))) 
         
+        for i in range(len(circle_points_heading)):
+            if circle_points_heading[i] > 360:
+                circle_points_heading[i] -= 360
+            elif circle_points_heading[i] < 0:
+                circle_points_heading[i] += 360
+
         return circle_points_x, circle_points_y, circle_points_heading
         
     def get_waypoints(self):
         self.reset_origin()
         curr_loc = self.get_gem_state()
-        self.path_points_lon_x, self.path_points_lat_y, self.path_points_heading = self.track2midpoint(self.env_points[0], self.env_points[1], (curr_loc[0], curr_loc[1]))
-        circle_points_x, circle_points_y, circle_points_heading = self.circlepoints(self.env_points[0], (curr_loc[0], curr_loc[1]), (self.path_points_lon_x[-1], self.path_points_lat_y[-1]))
-        self.path_points_lon_x = np.append(self.path_points_lon_x ,circle_points_x)
-        self.path_points_lat_y = np.append(self.path_points_lat_y, circle_points_y)
-        self.path_points_heading = np.append(self.path_points_heading, circle_points_heading)
+        point1 = self.env_points[0]
+        for i in range(len(self.env_points)):
+            dist = math.sqrt(((self.env_points[i][0] - point1[0])**2 + (self.env_points[i][1] - point1[1])**2))
+            if dist > 1:
+                 point2 = self.env_points[i]
+                 break
+        self.path_points_lon_x, self.path_points_lat_y, self.path_points_heading = self.track2midpoint(point1, point2, (curr_loc[0], curr_loc[1]), 20)
+        self.circle_points_x, self.circle_points_y, self.circle_points_heading = self.circlepoints(self.env_points[0], (curr_loc[0], curr_loc[1]), (self.path_points_lon_x[-1], self.path_points_lat_y[-1]), 20)
+        # self.path_points_lon_x = np.append(self.path_points_lon_x ,circle_points_x)
+        # self.path_points_lat_y = np.append(self.path_points_lat_y, circle_points_y)
+        # self.path_points_heading = np.append(self.path_points_heading, circle_points_heading)
+        plt.plot(self.path_points_lon_x, self.path_points_lat_y)
+        plt.plot(self.circle_points_x, self.circle_points_y)
         self.wp_size             = len(self.path_points_lon_x)
         self.dist_arr            = np.zeros(self.wp_size)
-
+        plt.show()
 
     def wps_to_local_xy(self, lon_wp, lat_wp):
         # convert GNSS waypoints into local fixed frame reprented in x and y
@@ -397,14 +414,28 @@ class PurePursuit(object):
                     self.gem_enable = True
 
 
-            self.path_points_x = np.array(self.path_points_lon_x)
-            self.path_points_y = np.array(self.path_points_lat_y)
+            
 
             
             curr_x, curr_y, curr_yaw = self.get_gem_state()
             # f = open("8figure_final.csv",'w')
             # f.write(f'{curr_x}, {curr_y}, {curr_yaw}\n')
             # f.close()
+            dist2goal = math.sqrt((curr_x - self.path_points_lon_x[-1])**2 + (curr_y - self.path_points_lat_y[-1])**2)
+            
+            print('dist2goal: ', dist2goal)
+
+            if dist2goal > 1.5 and not self.midpoint_reached:
+                self.path_points_x = np.array(self.path_points_lon_x)
+                self.path_points_y = np.array(self.path_points_lat_y)
+            else:
+                print('midpoint reached')
+                self.midpoint_reached = True
+                self.path_points_x = np.array(self.circle_points_x)
+                self.path_points_y = np.array(self.circle_points_y)
+                self.path_points_heading = self.circle_points_heading
+                self.wp_size             = len(self.circle_points_x)
+                self.dist_arr            = np.zeros(self.wp_size)
 
 
             # finding the distance of each way point from the current position
@@ -420,7 +451,7 @@ class PurePursuit(object):
                 v2 = [np.cos(curr_yaw), np.sin(curr_yaw)]
                 temp_angle = self.find_angle(v1,v2)
                 # find correct look-ahead point by using heading information
-                if abs(temp_angle) < np.pi/6:
+                if abs(temp_angle) < np.pi:
                     self.goal = idx
                     break
 
@@ -451,6 +482,7 @@ class PurePursuit(object):
                 print("Crosstrack Error: " + str(ct_error))
                 print("Front steering angle: " + str(np.degrees(f_delta)) + " degrees")
                 print("Steering wheel angle: " + str(steering_angle) + " degrees" )
+                print("Heading angle: ", list(self.path_points_heading))
                 print("\n")
 
             # if (self.goal >= 625 and self.goal <= 940):
@@ -558,8 +590,13 @@ class PC_Manip:
 
                 # Sort the data by the count of points in each grid in descending order
                 result = result.sort_values(by='count', ascending=False)
+                print(result.shape)
                 result = result.head(10)
-                
+
+                # kmeans = KMeans(n_clusters=2)
+                # kmeans.fit(df)
+                # centroids = kmeans.cluster_centers_
+
                 # return top 10 most dense grid (mean of x and y of all points in grid)
                 
                 fig, ax = plt.subplots(figsize=(7,7))
@@ -579,12 +616,13 @@ class PC_Manip:
 
                 print(result)
                 # Show the plot
-                plt.show()
+                # plt.show()
                 
                 return list(zip(result['x'], result['y']))
+                # return centroids
 
         def get_env(self):
-                time.sleep(0.5)
+                time.sleep(1)
                 return(self.find_squares())
 
 def pure_pursuit():
