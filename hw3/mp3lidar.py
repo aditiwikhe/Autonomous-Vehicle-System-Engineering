@@ -170,7 +170,10 @@ class Manager:
 				self.update_array.append(update)
 
 			self.prev_err = err
-			self.cum_err += err
+			# only accumulate error if we are within maximum control output
+			# source: https://control.com/technical-articles/intergral-windup-method-in-pid-control/
+			if update <= 0.4:
+				self.cum_err += err * (curr_time - self.prev_time)
 			if self.cur_dist:
 				self.prev_dist = self.cur_dist
 			self.prev_time = curr_time
