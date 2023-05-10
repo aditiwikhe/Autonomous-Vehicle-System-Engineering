@@ -139,7 +139,7 @@ class PurePursuit(object):
 
         self.midpoint_reached = False
 
-        self.desired_speed = 0.55  # m/s, reference speed
+        self.desired_speed = 0.3  # m/s, reference speed
         self.max_accel     = 0.4 # % of acceleration
         self.pid_speed     = PID(1.2, 0.2, 0.6, wg=20)
         self.speed_filter  = OnlineFilter(1.2, 30, 4)
@@ -281,7 +281,7 @@ class PurePursuit(object):
         return track_points_x, track_points_y, track_points_heading
 
     def circlepoints(self, circle_center, gem_startloc, perimeter_point, num_points=20):
-        r = math.sqrt((perimeter_point[0]-circle_center[0])**2 + (perimeter_point[1]-circle_center[1])**2)
+        r = (math.sqrt((perimeter_point[0]-circle_center[0])**2 + (perimeter_point[1]-circle_center[1])**2)) * 1.2
         starting_t = np.degrees(math.acos((perimeter_point[0] - circle_center[0])/r))
         if perimeter_point[1] < circle_center[1]:
             starting_t *= -1 # accounting for unwrapping that happens at 180deg (aka on the bottom half of a circle)
@@ -431,6 +431,27 @@ class PurePursuit(object):
             else:
                 print('midpoint reached')
                 self.midpoint_reached = True
+
+                while 1:
+                    current_time = rospy.get_time()
+                    filt_vel     = self.speed_filter.get_data(self.speed)
+                    output_accel = self.pid_speed.get_control(current_time, self.desired_speed - filt_vel)
+                    if output_accel > self.max_accel:
+                        output_accel = self.max_accel
+
+                    if output_accel < 0.3:
+                        output_accel = 0.3
+
+                    self.accel_cmd.f64_cmd = output_accel
+                    self.accel_pub.publish(self.accel_cmd)
+
+                    #self.steer_cmd.angular_position = 0.0 # radians, -: clockwise, +: counter-clockwise
+                    self.steer_cmd.angular_velocity_limit = 2.0 # radians/second
+                    self.steer_cmd.angular_position = np.radians(3.5 * 135)
+                    self.steer_pub.publish(self.steer_cmd)
+
+
+
                 self.path_points_x = np.array(self.circle_points_x)
                 self.path_points_y = np.array(self.circle_points_y)
                 self.path_points_heading = self.circle_points_heading
@@ -443,7 +464,9 @@ class PurePursuit(object):
                 self.dist_arr[i] = self.dist((self.path_points_x[i], self.path_points_y[i]), (curr_x, curr_y))
 
             # finding those points which are less than the look ahead distance (will be behind and ahead of the vehicle)
-            goal_arr = np.where( (self.dist_arr < self.look_ahead + 0.3) & (self.dist_arr > self.look_ahead - 0.3) )[0]
+            goal_arr = np.where( (self.dist_arr < self.look_ahead + 0.3) ) [0]
+            #& (self.dist_arr > self.look_ahead - 0.3
+
 
             # finding the goal point which is the last in the set of points less than the lookahead distance
             for idx in goal_arr:
@@ -482,7 +505,8 @@ class PurePursuit(object):
                 print("Crosstrack Error: " + str(ct_error))
                 print("Front steering angle: " + str(np.degrees(f_delta)) + " degrees")
                 print("Steering wheel angle: " + str(steering_angle) + " degrees" )
-                print("Heading angle: ", list(self.path_points_heading))
+                #print("Heading angle: ", list(self.path_points_heading))
+                print('Goal Array: ', goal_arr)
                 print("\n")
 
             # if (self.goal >= 625 and self.goal <= 940):
