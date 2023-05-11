@@ -319,6 +319,7 @@ class PurePursuit(object):
     #     return track_points_x, track_points_y, track_points_heading
     
     def get_frontcar_rearcar(self):
+        print('calculating front and rear car positions')
         self.reset_origin()
         curr_loc = self.get_gem_state()
         self.frontcar = self.env_points[0]
