@@ -256,7 +256,7 @@ class PurePursuit(object):
             track_points_heading = [90 for i in range(len(track_points_x))]
         
         elif self.parallel_step == ParallelSteps.reverse2mid:
-            goal = (self.frontcar[1] + self.rearcar[1])/2
+            goal = ((self.frontcar[0] + self.rearcar[0])/2, (self.frontcar[1] + self.rearcar[1])/2)
             start_loc = self.get_gem_state()
             track_points_x = np.linspace(start_loc[0], goal[0], num_points)
             track_points_y = np.linspace(start_loc[1], goal[1], num_points)
@@ -264,8 +264,8 @@ class PurePursuit(object):
             # I think this might be  wrong rn. Needs to be fixed
             x_dist = (self.frontcar[0] + self.rearcar[0])/2
             y_dist = self.frontcar[1] - start_loc[1]
-            theta = np.degrees(np.arctan2(x_dist/y_dist))
-            heading = 90 - theta
+            theta = np.degrees(np.arctan(x_dist/y_dist))
+            heading = 90 - (1*theta)
             track_points_heading = [heading for i in range(len(track_points_x))]
 
         elif self.parallel_step == ParallelSteps.reverse2rear:
@@ -287,6 +287,9 @@ class PurePursuit(object):
             track_points_x = [start_loc[0]]
             track_points_y = [start_loc[1]]
             track_points_heading = [start_loc[2]+90]
+
+        self.wp_size             = len(track_points_x)
+        self.dist_arr            = np.zeros(self.wp_size)
 
         return track_points_x, track_points_y, track_points_heading
     
@@ -328,12 +331,20 @@ class PurePursuit(object):
         print('calculating front and rear car positions')
         self.reset_origin()
         curr_loc = self.get_gem_state()
-        self.frontcar = self.env_points[0]
+        # self.frontcar = self.env_points[0]
+        candidate1 = self.env_points[0]
         for i in range(len(self.env_points)):
-            dist = math.sqrt(((self.env_points[i][0] - self.frontcar[0])**2 + (self.env_points[i][1] - self.frontcar[1])**2))
+            dist = math.sqrt(((self.env_points[i][0] - candidate1[0])**2 + (self.env_points[i][1] - candidate1[1])**2))
             if dist > 1:
-                 self.rearcar = self.env_points[i]
+                #  self.rearcar = self.env_points[i]
+                 candidate2 = self.env_points[i]
                  break
+        if candidate1[0] > candidate2[0]:
+            self.frontcar = candidate1
+            self.rearcar = candidate2
+        else:
+            self.frontcar = candidate2
+            self.rearcar = candidate1
         
     # def get_waypoints(self):
     #     self.reset_origin()
@@ -436,37 +447,44 @@ class PurePursuit(object):
             if not self.current_step_tracked:
                 self.path_points_x, self.path_points_y, self.path_points_heading = self.track2goal()
                 self.current_step_tracked = True
-                
-                if self.parallel_step.value in [2,3]:
-                    self.gear_cmd.ui16_cmd = 1
-                    self.gear_pub.publish(self.gear_cmd)
-                else:
-                    self.gear_cmd.ui16_cmd = 3
-                    self.gear_pub.publish(self.gear_cmd)
                             
                 self.path_points_x = np.array(self.path_points_x)
                 self.path_points_y = np.array(self.path_points_y)
                 self.path_points_heading = np.array(self.path_points_heading)
-
-            # f = open("8figure_final.csv",'w')
-            # f.write(f'{curr_x}, {curr_y}, {curr_yaw}\n')
-            # f.close()
-            dist2goal = math.sqrt((curr_x - self.path_points_lon_x[-1])**2 + (curr_y - self.path_points_lat_y[-1])**2)
+            
+            dist2goal = math.sqrt((curr_x - self.path_points_x[-1])**2 + (curr_y - self.path_points_y[-1])**2)
             
             print('dist2goal: ', dist2goal)
+
 
             if dist2goal < 1.5:
                 self.accel_cmd.f64_cmd = 0
                 self.accel_pub.publish(self.accel_cmd)
-                self.brake_pub.publish(f64_cmd = 0.4)
-                time.sleep(1)
+                self.brake_pub.publish(f64_cmd = 0.6)
+                time.sleep(2)
                 if self.parallel_step.value == ParallelSteps.forward2front:
                     while 1:
                         print('Finished Parking!')
                 else:
-                    self.parallel_step = ParallelSteps(self.parallel_step+1)
+                    self.parallel_step = ParallelSteps(self.parallel_step.value+1)
                     self.current_step_tracked = False
 
+                    if self.parallel_step.value == 1 or self.parallel_step.value == 2:
+                        print("in gear shift")
+                        self.gear_cmd.ui16_cmd = 1
+                        self.gear_pub.publish(self.gear_cmd)
+                        self.brake_pub.publish(f64_cmd = 0)
+                        time.sleep(2)
+                    else:
+                        self.gear_cmd.ui16_cmd = 3
+                        self.gear_pub.publish(self.gear_cmd)
+                        self.brake_pub.publish(f64_cmd = 0)
+                        time.sleep(2)
+
+            # f = open("8figure_final.csv",'w')
+            # f.write(f'{curr_x}, {curr_y}, {curr_yaw}\n')
+            # f.close()
+            
             # if dist2goal > 1.5 and not self.midpoint_reached:
             #     self.path_points_x = np.array(self.path_points_lon_x)
             #     self.path_points_y = np.array(self.path_points_lat_y)
@@ -521,6 +539,7 @@ class PurePursuit(object):
                 # self.dist_arr            = np.zeros(self.wp_size)
 
             else:
+                self.brake_pub.publish(f64_cmd = 0)
                 # finding the distance of each way point from the current position
                 for i in range(len(self.path_points_x)):
                     self.dist_arr[i] = self.dist((self.path_points_x[i], self.path_points_y[i]), (curr_x, curr_y))
@@ -561,7 +580,8 @@ class PurePursuit(object):
                 steering_angle = self.front2steer(f_delta_deg)
 
                 if(self.gem_enable == True):
-                    print("Current index: " + str(self.goal))
+                    print("Current step: " + str(self.parallel_step))
+                    print("Current step value: " + str(self.parallel_step.value))
                     print("Forward velocity: " + str(self.speed))
                     ct_error = round(np.sin(alpha) * L, 3)
                     print("Crosstrack Error: " + str(ct_error))
@@ -587,6 +607,7 @@ class PurePursuit(object):
                     output_accel = 0.3
 
                 self.accel_cmd.f64_cmd = output_accel
+                print('Acc:',output_accel)
                 self.steer_cmd.angular_position = np.radians(steering_angle)
                 self.accel_pub.publish(self.accel_cmd)
                 self.steer_pub.publish(self.steer_cmd)
@@ -599,7 +620,7 @@ class PC_Manip:
                 self.points = []
                 self.num_x_cells = 20
                 self.num_y_cells = 20
-                self.look_radius = 10
+                self.look_radius = 15
                 self.z_clip = 1.5
                 
         def lidar_callback(self, pointcloud):
@@ -640,7 +661,7 @@ class PC_Manip:
                 
                 # clip points based on look radius
                 df = df[(df['x'] <= self.look_radius) & ((df['x'] >= (-1) * self.look_radius)) \
-                        & (df['y'] <= self.look_radius) & (df['y'] >= (-1) * self.look_radius)]
+                        & (df['y'] <= 2) & (df['y'] >= (-1) * self.look_radius)]
                         
                 exclude = df[(df['x'] <= 1) & ((df['x'] >= (-1) * 1)) \
                         & (df['y'] <= 1) & (df['y'] >= (-1) * 1)]
@@ -702,7 +723,7 @@ class PC_Manip:
 
                 print(result)
                 # Show the plot
-                # plt.show()
+                plt.show()
                 
                 return list(zip(result['x'], result['y']))
                 # return centroids
