@@ -256,11 +256,17 @@ class PurePursuit(object):
             track_points_heading = [90 for i in range(len(track_points_x))]
         
         elif self.parallel_step == ParallelSteps.reverse2mid:
-            goal = (self.rearcar[0]+1.5, self.rearcar[1])
+            goal = (self.frontcar[1] + self.rearcar[1])/2
             start_loc = self.get_gem_state()
             track_points_x = np.linspace(start_loc[0], goal[0], num_points)
             track_points_y = np.linspace(start_loc[1], goal[1], num_points)
-            track_points_heading = [270 for i in range(len(track_points_x))]
+            
+            # I think this might be  wrong rn. Needs to be fixed
+            x_dist = (self.frontcar[0] + self.rearcar[0])/2
+            y_dist = self.frontcar[1] - start_loc[1]
+            theta = np.degrees(np.arctan2(x_dist/y_dist))
+            heading = 90 - theta
+            track_points_heading = [heading for i in range(len(track_points_x))]
 
         elif self.parallel_step == ParallelSteps.reverse2rear:
             goal = (self.rearcar[0]+1.5, self.rearcar[1])
