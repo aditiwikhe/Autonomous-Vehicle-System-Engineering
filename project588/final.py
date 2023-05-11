@@ -8,9 +8,12 @@ import numpy as np
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 import statistics
+import deque
 
 class Detector:
     def detect(self, frame):
+        smooth = deque()
+        smooth_factor = 5
         classes = []
         with open('coco.names', 'r') as f:
             classes = [line.strip() for line in f.readlines()]
@@ -27,9 +30,6 @@ class Detector:
         confidences = []
         boxes = []
 
-        smooth = 5
-        smooth_arr = []
-
         for out in outs:
             for detection in out:
                 scores = detection[5:]
@@ -42,11 +42,13 @@ class Detector:
                     height = int(detection[3] * frame.shape[0])
                     x = int(center_x - width / 2)
                     y = int(center_y - height / 2)
-                    smooth_arr.append(height)
-                    if len(smooth_arr) == smooth:
-                        return statistics.mean(smooth_arr)
-                        smooth_arr = []
-        return (-9999)
+                    if len(smooth) < smooth_factor:
+                        smooth.append(height)
+                    else:
+                        smooth.popleft()
+                        smooth.append(height)
+                    return statistics.mean(smooth)
+        return (None)
 
 class Manager:
     def __init__(self):
