@@ -138,9 +138,10 @@ class PurePursuit(object):
         self.olat       = 40.0928563
         self.olon       = -88.2359994
 
-        # read waypoints into the system 
+        # reason about the environment 
         self.pointcloud_data = PC_Manip()
         self.env_points = self.pointcloud_data.get_env()
+        self.get_frontcar_rearcar()
         self.goal       = 0            
         # self.get_waypoints()
 
@@ -191,7 +192,8 @@ class PurePursuit(object):
         self.steer_cmd.angular_position = 0.0 # radians, -: clockwise, +: counter-clockwise
         self.steer_cmd.angular_velocity_limit = 2.0 # radians/second
 
-        self.parallel_steps = ParallelSteps(0)
+        self.parallel_step = ParallelSteps(0)
+        self.current_step_tracked = False
         
 
 
@@ -244,50 +246,87 @@ class PurePursuit(object):
         self.olat = self.lat
         self.olon = self.lon
 
-    def track2front(self, car1_loc, car2_loc, num_points=4):
-        self.frontcar = car1_loc if car1_loc[0] > car2_loc[0] else car2_loc
-        self.rearcar = car2_loc if self.frontcar == car1_loc else car1_loc
-        start_loc = self.get_gem_state()
-        goal = (self.frontcar[0], start_loc[1])
-        track_points_x = np.linspace(start_loc[0], goal[0], num_points)
-        track_points_y = np.linspace(start_loc[1], goal[1], num_points)
-        track_points_heading = [90 for i in range(len(track_points_x))]
+    def track2goal(self, num_points=4):
+        print("calculating track for step: ", self.parallel_step.name)
+        if self.parallel_step == ParallelSteps.parallel2front:
+            start_loc = self.get_gem_state()
+            goal = (self.frontcar[0], self.frontcar[1]+1)
+            track_points_x = np.linspace(start_loc[0], goal[0], num_points)
+            track_points_y = np.linspace(start_loc[1], goal[1], num_points)
+            track_points_heading = [90 for i in range(len(track_points_x))]
+        
+        elif self.parallel_step == ParallelSteps.reverse2mid:
+            goal = (self.rearcar[0]+1.5, self.rearcar[1])
+            start_loc = self.get_gem_state()
+            track_points_x = np.linspace(start_loc[0], goal[0], num_points)
+            track_points_y = np.linspace(start_loc[1], goal[1], num_points)
+            track_points_heading = [270 for i in range(len(track_points_x))]
+
+        elif self.parallel_step == ParallelSteps.reverse2rear:
+            goal = (self.rearcar[0]+1.5, self.rearcar[1])
+            start_loc = self.get_gem_state()
+            track_points_x = np.linspace(start_loc[0], goal[0], num_points)
+            track_points_y = np.linspace(start_loc[1], goal[1], num_points)
+            track_points_heading = [270 for i in range(len(track_points_x))]
+
+        elif self.parallel_step == ParallelSteps.forward2front:
+            goal = (self.frontcar[0]-1.5, self.frontcar[1])
+            start_loc = self.get_gem_state()
+            track_points_x = np.linspace(start_loc[0], goal[0], num_points)
+            track_points_y = np.linspace(start_loc[1], goal[1], num_points)
+            track_points_heading = [90 for i in range(len(track_points_x))]
+
+        else:
+            start_loc = self.get_gem_state()
+            track_points_x = [start_loc[0]]
+            track_points_y = [start_loc[1]]
+            track_points_heading = [start_loc[2]+90]
 
         return track_points_x, track_points_y, track_points_heading
     
-    def track2midpoint(self, num_points=4)
-        goal = (self.frontcar[1] + self.rearcar[1])/2
-        start_loc = self.get_gem_state()
-        track_points_x = np.linspace(start_loc[0], goal[0], num_points)
-        track_points_y = np.linspace(start_loc[1], goal[1], num_points)
+    # def track2midpoint(self, num_points=4):
+    #     goal = (self.frontcar[1] + self.rearcar[1])/2
+    #     start_loc = self.get_gem_state()
+    #     track_points_x = np.linspace(start_loc[0], goal[0], num_points)
+    #     track_points_y = np.linspace(start_loc[1], goal[1], num_points)
         
-        # I think this is how the heading should work (see diagram on iPad) however,
-        # I'm not sure if reverse will make heading look different. Some testing needed
-        x_dist = (self.frontcar[0] + self.rearcar[0])/2
-        y_dist = self.frontcar[1] - start_loc[1]
-        theta = np.degrees(np.arctan2(x_dist/y_dist))
-        heading = 180 + theta
-        track_points_heading = [heading for i in range(len(track_points_x))]
+    #     # I think this is how the heading should work (see diagram on iPad) however,
+    #     # I'm not sure if reverse will make heading look different. Some testing needed
+    #     x_dist = (self.frontcar[0] + self.rearcar[0])/2
+    #     y_dist = self.frontcar[1] - start_loc[1]
+    #     theta = np.degrees(np.arctan2(x_dist/y_dist))
+    #     heading = 180 + theta
+    #     track_points_heading = [heading for i in range(len(track_points_x))]
 
-        return track_points_x, track_points_y, track_points_heading
+    #     return track_points_x, track_points_y, track_points_heading
 
-    def track2rear_of_space(self, num_points=4):
-        goal = (self.rearcar[0]+1.5, self.rearcar[1])
-        start_loc = get_gem_state()
-        track_points_x = np.linspace(start_loc[0], goal[0], num_points)
-        track_points_y = np.linspace(start_loc[1], goal[1], num_points)
-        track_points_heading = [270 for i in range(len(track_points_x))]
+    # def track2rear_of_space(self, num_points=4):
+    #     goal = (self.rearcar[0]+1.5, self.rearcar[1])
+    #     start_loc = self.get_gem_state()
+    #     track_points_x = np.linspace(start_loc[0], goal[0], num_points)
+    #     track_points_y = np.linspace(start_loc[1], goal[1], num_points)
+    #     track_points_heading = [270 for i in range(len(track_points_x))]
 
-        return track_points_x, track_points_y, track_points_heading
+    #     return track_points_x, track_points_y, track_points_heading
 
-    def track2front_of_space(self, num_points=4):
-        goal = (self.frontcar[0]-1.5, self.frontcar[1])
-        start_loc = get_gem_state()
-        track_points_x = np.linspace(start_loc[0], goal[0], num_points)
-        track_points_y = np.linspace(start_loc[1], goal[1], num_points)
-        track_points_heading = [90 for i in range(len(track_points_x))]
+    # def track2front_of_space(self, num_points=4):
+    #     goal = (self.frontcar[0]-1.5, self.frontcar[1])
+    #     start_loc = self.get_gem_state()
+    #     track_points_x = np.linspace(start_loc[0], goal[0], num_points)
+    #     track_points_y = np.linspace(start_loc[1], goal[1], num_points)
+    #     track_points_heading = [90 for i in range(len(track_points_x))]
 
-        return track_points_x, track_points_y, track_points_heading
+    #     return track_points_x, track_points_y, track_points_heading
+    
+    def get_frontcar_rearcar(self):
+        self.reset_origin()
+        curr_loc = self.get_gem_state()
+        self.frontcar = self.env_points[0]
+        for i in range(len(self.env_points)):
+            dist = math.sqrt(((self.env_points[i][0] - self.frontcar[0])**2 + (self.env_points[i][1] - self.frontcar[1])**2))
+            if dist > 1:
+                 self.rearcar = self.env_points[i]
+                 break
         
     # def get_waypoints(self):
     #     self.reset_origin()
@@ -386,6 +425,22 @@ class PurePursuit(object):
 
             
             curr_x, curr_y, curr_yaw = self.get_gem_state()
+
+            if not self.current_step_tracked:
+                self.path_points_x, self.path_points_y, self.path_points_heading = self.track2goal()
+                self.current_step_tracked = True
+                
+                if self.parallel_step.value in [2,3]:
+                    self.gear_cmd.ui16_cmd = 1
+                    self.gear_pub.publish(self.gear_cmd)
+                else:
+                    self.gear_cmd.ui16_cmd = 3
+                    self.gear_pub.publish(self.gear_cmd)
+                            
+                self.path_points_x = np.array(self.path_points_x)
+                self.path_points_y = np.array(self.path_points_y)
+                self.path_points_heading = np.array(self.path_points_heading)
+
             # f = open("8figure_final.csv",'w')
             # f.write(f'{curr_x}, {curr_y}, {curr_yaw}\n')
             # f.close()
@@ -393,50 +448,62 @@ class PurePursuit(object):
             
             print('dist2goal: ', dist2goal)
 
-            if dist2goal > 1.5 and not self.midpoint_reached:
-                self.path_points_x = np.array(self.path_points_lon_x)
-                self.path_points_y = np.array(self.path_points_lat_y)
-            else:
-                print('midpoint reached')
-                self.midpoint_reached = True
-                midpoint_time  = rospy.get_time()
+            if dist2goal < 1.5:
+                self.accel_cmd.f64_cmd = 0
+                self.accel_pub.publish(self.accel_cmd)
+                self.brake_pub.publish(f64_cmd = 0.4)
+                time.sleep(1)
+                if self.parallel_step.value == ParallelSteps.forward2front:
+                    while 1:
+                        print('Finished Parking!')
+                else:
+                    self.parallel_step = ParallelSteps(self.parallel_step+1)
+                    self.current_step_tracked = False
+
+            # if dist2goal > 1.5 and not self.midpoint_reached:
+            #     self.path_points_x = np.array(self.path_points_lon_x)
+            #     self.path_points_y = np.array(self.path_points_lat_y)
+            # else:
+            #     print('midpoint reached')
+            #     self.midpoint_reached = True
+            #     midpoint_time  = rospy.get_time()
                 
                 # calculates constant steering angle for circle around box
                 # basis is this website: https://calculator.academy/turning-radius-calculator/
                 # equation given is turn_radius = wheel_base / tan(frontwheel_angle)
-                frontwheel_angle = np.degrees(np.arctan2((self.radius / self.wheelbase)))
-                circlular_steering_angle = self.front2steer(frontwheel_angle)
+                # frontwheel_angle = np.degrees(np.arctan2((self.radius / self.wheelbase)))
+                # circlular_steering_angle = self.front2steer(frontwheel_angle)
 
-                while 1:
+                # while 1:
                     
-                    curr_x, curr_y, curr_yaw = self.get_gem_state()
-                    dist2goal = math.sqrt((curr_x - self.path_points_lon_x[-1])**2 + (curr_y - self.path_points_lat_y[-1])**2)
-                    print('dist2goal: ', dist2goal)
-                    curr_time = rospy.get_time()
-                    # check for breaking condition (within 1.5m of midpoint, midpoint has been reached once and was reached more than 10 seconds ago)
-                    if dist2goal < 1.5 and self.midpoint_reached and (curr_time > midpoint_time+10):
-                        while 1:
-                            self.brake_pub.publish(f64_cmd = 0.6)
+                #     curr_x, curr_y, curr_yaw = self.get_gem_state()
+                #     dist2goal = math.sqrt((curr_x - self.path_points_lon_x[-1])**2 + (curr_y - self.path_points_lat_y[-1])**2)
+                #     print('dist2goal: ', dist2goal)
+                #     curr_time = rospy.get_time()
+                #     # check for breaking condition (within 1.5m of midpoint, midpoint has been reached once and was reached more than 10 seconds ago)
+                #     if dist2goal < 1.5 and self.midpoint_reached and (curr_time > midpoint_time+10):
+                #         while 1:
+                #             self.brake_pub.publish(f64_cmd = 0.6)
 
-                    # provide inputs to pid velocity control
-                    current_time = rospy.get_time()
-                    filt_vel     = self.speed_filter.get_data(self.speed)
-                    output_accel = self.pid_speed.get_control(current_time, self.desired_speed - filt_vel)
-                    if output_accel > self.max_accel:
-                        output_accel = self.max_accel
+                #     # provide inputs to pid velocity control
+                #     current_time = rospy.get_time()
+                #     filt_vel     = self.speed_filter.get_data(self.speed)
+                #     output_accel = self.pid_speed.get_control(current_time, self.desired_speed - filt_vel)
+                #     if output_accel > self.max_accel:
+                #         output_accel = self.max_accel
 
-                    if output_accel < 0.3:
-                        output_accel = 0.3
+                #     if output_accel < 0.3:
+                #         output_accel = 0.3
 
 
-                    self.accel_cmd.f64_cmd = output_accel
-                    self.accel_pub.publish(self.accel_cmd)
+                #     self.accel_cmd.f64_cmd = output_accel
+                #     self.accel_pub.publish(self.accel_cmd)
 
-                    #self.steer_cmd.angular_position = 0.0 # radians, -: clockwise, +: counter-clockwise
-                    self.steer_cmd.angular_velocity_limit = 2.0 # radians/second
-                    # self.steer_cmd.angular_position = np.radians(3.5 * 135)
-                    self.steer_cmd.angular_position = np.radians(circlular_steering_angle)
-                    self.steer_pub.publish(self.steer_cmd)
+                #     #self.steer_cmd.angular_position = 0.0 # radians, -: clockwise, +: counter-clockwise
+                #     self.steer_cmd.angular_velocity_limit = 2.0 # radians/second
+                #     # self.steer_cmd.angular_position = np.radians(3.5 * 135)
+                #     self.steer_cmd.angular_position = np.radians(circlular_steering_angle)
+                #     self.steer_pub.publish(self.steer_cmd)
 
 
 
@@ -446,78 +513,78 @@ class PurePursuit(object):
                 # self.wp_size             = len(self.circle_points_x)
                 # self.dist_arr            = np.zeros(self.wp_size)
 
+            else:
+                # finding the distance of each way point from the current position
+                for i in range(len(self.path_points_x)):
+                    self.dist_arr[i] = self.dist((self.path_points_x[i], self.path_points_y[i]), (curr_x, curr_y))
 
-            # finding the distance of each way point from the current position
-            for i in range(len(self.path_points_x)):
-                self.dist_arr[i] = self.dist((self.path_points_x[i], self.path_points_y[i]), (curr_x, curr_y))
-
-            # finding those points which are less than the look ahead distance (will be behind and ahead of the vehicle)
-            goal_arr = np.where( (self.dist_arr < self.look_ahead + 0.3) ) [0]
-            #& (self.dist_arr > self.look_ahead - 0.3
+                # finding those points which are less than the look ahead distance (will be behind and ahead of the vehicle)
+                goal_arr = np.where( (self.dist_arr < self.look_ahead + 0.3) ) [0]
+                #& (self.dist_arr > self.look_ahead - 0.3
 
 
-            # finding the goal point which is the last in the set of points less than the lookahead distance
-            for idx in goal_arr:
-                v1 = [self.path_points_x[idx]-curr_x , self.path_points_y[idx]-curr_y]
-                v2 = [np.cos(curr_yaw), np.sin(curr_yaw)]
-                temp_angle = self.find_angle(v1,v2)
-                # find correct look-ahead point by using heading information
-                if abs(temp_angle) < np.pi:
-                    self.goal = idx
-                    break
+                # finding the goal point which is the last in the set of points less than the lookahead distance
+                for idx in goal_arr:
+                    v1 = [self.path_points_x[idx]-curr_x , self.path_points_y[idx]-curr_y]
+                    v2 = [np.cos(curr_yaw), np.sin(curr_yaw)]
+                    temp_angle = self.find_angle(v1,v2)
+                    # find correct look-ahead point by using heading information
+                    if abs(temp_angle) < np.pi:
+                        self.goal = idx
+                        break
 
-            # finding the distance between the goal point and the vehicle
-            # true look-ahead distance between a waypoint and current position
-            L = self.dist_arr[self.goal]
+                # finding the distance between the goal point and the vehicle
+                # true look-ahead distance between a waypoint and current position
+                L = self.dist_arr[self.goal]
 
-            # find the curvature and the angle 
-            alpha = self.heading_to_yaw(self.path_points_heading[self.goal]) - curr_yaw
+                # find the curvature and the angle 
+                alpha = self.heading_to_yaw(self.path_points_heading[self.goal]) - curr_yaw
 
-            # ----------------- tuning this part as needed -----------------
-            k       = 0.41 
-            angle_i = math.atan((k * 2 * self.wheelbase * math.sin(alpha)) / L) 
-            angle   = angle_i*2
-            # ----------------- tuning this part as needed -----------------
+                # ----------------- tuning this part as needed -----------------
+                k       = 0.41 
+                angle_i = math.atan((k * 2 * self.wheelbase * math.sin(alpha)) / L) 
+                angle   = angle_i*2
+                # ----------------- tuning this part as needed -----------------
 
-            f_delta = round(np.clip(angle, -0.61, 0.61), 3)
+                f_delta = round(np.clip(angle, -0.61, 0.61), 3)
 
-            f_delta_deg = np.degrees(f_delta)
+                f_delta_deg = np.degrees(f_delta)
 
-            # steering_angle in degrees
-            steering_angle = self.front2steer(f_delta_deg)
+                # steering_angle in degrees
+                steering_angle = self.front2steer(f_delta_deg)
 
-            if(self.gem_enable == True):
-                print("Current index: " + str(self.goal))
-                print("Forward velocity: " + str(self.speed))
-                ct_error = round(np.sin(alpha) * L, 3)
-                print("Crosstrack Error: " + str(ct_error))
-                print("Front steering angle: " + str(np.degrees(f_delta)) + " degrees")
-                print("Steering wheel angle: " + str(steering_angle) + " degrees" )
-                #print("Heading angle: ", list(self.path_points_heading))
-                print('Goal Array: ', goal_arr)
-                print("\n")
+                if(self.gem_enable == True):
+                    print("Current index: " + str(self.goal))
+                    print("Forward velocity: " + str(self.speed))
+                    ct_error = round(np.sin(alpha) * L, 3)
+                    print("Crosstrack Error: " + str(ct_error))
+                    print("Front steering angle: " + str(np.degrees(f_delta)) + " degrees")
+                    print("Steering wheel angle: " + str(steering_angle) + " degrees" )
+                    #print("Heading angle: ", list(self.path_points_heading))
+                    print('Goal Array: ', goal_arr)
+                    print("\n")
 
-            # if (self.goal >= 625 and self.goal <= 940):
-            #     self.desired_speed = 1.5
-            # else:
-            #     self.desired_speed = 0.7
+                # if (self.goal >= 625 and self.goal <= 940):
+                #     self.desired_speed = 1.5
+                # else:
+                #     self.desired_speed = 0.7
 
-            current_time = rospy.get_time()
-            filt_vel     = self.speed_filter.get_data(self.speed)
-            output_accel = self.pid_speed.get_control(current_time, self.desired_speed - filt_vel)
+                current_time = rospy.get_time()
+                filt_vel     = self.speed_filter.get_data(self.speed)
+                output_accel = self.pid_speed.get_control(current_time, self.desired_speed - filt_vel)
 
-            if output_accel > self.max_accel:
-                output_accel = self.max_accel
+                if output_accel > self.max_accel:
+                    output_accel = self.max_accel
 
-            if output_accel < 0.3:
-                output_accel = 0.3
+                if output_accel < 0.3:
+                    output_accel = 0.3
 
-            self.accel_cmd.f64_cmd = output_accel
-            self.steer_cmd.angular_position = np.radians(steering_angle)
-            self.accel_pub.publish(self.accel_cmd)
-            self.steer_pub.publish(self.steer_cmd)
+                self.accel_cmd.f64_cmd = output_accel
+                self.steer_cmd.angular_position = np.radians(steering_angle)
+                self.accel_pub.publish(self.accel_cmd)
+                self.steer_pub.publish(self.steer_cmd)
 
-            self.rate.sleep()
+                self.rate.sleep()
 
 class PC_Manip:
         def __init__(self):
