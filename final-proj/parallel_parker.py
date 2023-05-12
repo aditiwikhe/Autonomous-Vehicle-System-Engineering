@@ -265,7 +265,7 @@ class PurePursuit(object):
             x_dist = (self.frontcar[0] + self.rearcar[0])/2
             y_dist = self.frontcar[1] - start_loc[1]
             theta = np.degrees(np.arctan(x_dist/y_dist))
-            heading = 90 - (1*theta)
+            heading = 90 - (2*theta)
             track_points_heading = [heading for i in range(len(track_points_x))]
 
         elif self.parallel_step == ParallelSteps.reverse2rear:
